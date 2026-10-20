@@ -1,0 +1,98 @@
+@page
+@model WillyShop.Pages.Products.IndexModel
+@{
+    ViewData["Title"] = "商品選購";
+
+    string ResolveImageUrl(string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath)) return Url.Content("~/images/product-placeholder.svg");
+        if (imagePath.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return imagePath;
+        var normalizedPath = imagePath.StartsWith("~") ? imagePath : imagePath.StartsWith("/") ? $"~{imagePath}" : $"~/{imagePath}";
+        return Url.Content(normalizedPath);
+    }
+
+    string GetStatusClass(ProductStatus status) => status switch
+    {
+        ProductStatus.可銷售 => "status-available",
+        ProductStatus.數量不足 => "status-low",
+        _ => "status-frozen"
+    };
+}
+
+<section class="catalog-hero">
+    <div class="row align-items-center g-4">
+        <div class="col-lg-7">
+            <span class="eyebrow">COMFORT FOR EVERY STEP</span>
+            <h1>找到適合每一天的<br class="d-none d-md-block" />舒適步伐</h1>
+            <p>從居家放鬆到日常外出，嚴選實穿鞋款，讓舒適自然融入生活。</p>
+            <a href="#product-section" class="btn btn-light btn-lg">瀏覽本期商品</a>
+        </div>
+        <div class="col-lg-5 d-none d-lg-block">
+            <div class="hero-visual">
+                <span class="hero-orbit hero-orbit-one"></span>
+                <span class="hero-orbit hero-orbit-two"></span>
+                <img src="~/images/slipper2.jpg" alt="舒適拖鞋精選" />
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="catalog-search" aria-label="商品篩選">
+    <div class="search-heading">
+        <div><span class="section-kicker">SEARCH</span><h2>快速找到理想商品</h2></div>
+        <span class="search-hint">可依商品資訊與修改日期篩選</span>
+    </div>
+    <form method="get">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="row g-3 align-items-end">
+            <div class="col-lg-3 col-md-6"><label asp-for="ProductCode" class="form-label">商品代碼</label><input asp-for="ProductCode" class="form-control" placeholder="例如 P001" /></div>
+            <div class="col-lg-3 col-md-6"><label asp-for="ProductName" class="form-label">商品名稱</label><input asp-for="ProductName" class="form-control" placeholder="輸入商品關鍵字" /></div>
+            <div class="col-lg-2 col-md-6"><label asp-for="ModifiedFrom" class="form-label">修改日期起</label><input asp-for="ModifiedFrom" type="date" class="form-control" /></div>
+            <div class="col-lg-2 col-md-6"><label asp-for="ModifiedTo" class="form-label">修改日期迄</label><input asp-for="ModifiedTo" type="date" class="form-control" /></div>
+            <div class="col-lg-2 d-flex gap-2"><button type="submit" class="btn btn-brand flex-grow-1">搜尋</button><a asp-page="./Index" class="btn btn-outline-secondary">重設</a></div>
+        </div>
+    </form>
+</section>
+
+<section id="product-section" class="product-section">
+    <div class="section-heading">
+        <div><span class="section-kicker">COLLECTION</span><h2>精選商品</h2><p>目前顯示 @Model.Products.Count 筆商品，點選卡片即可查看完整資訊。</p></div>
+        @if (User.IsInRole(SystemRoles.Store) || User.IsInRole(SystemRoles.Admin) || User.IsInRole(SystemRoles.System))
+        {
+            <a asp-page="/Admin/Products/Create" class="btn btn-outline-brand">＋ 新增商品</a>
+        }
+    </div>
+
+    @if (Model.Products.Count == 0)
+    {
+        <div class="empty-state"><div class="empty-state-icon">?</div><h3>查無符合條件的商品</h3><p>請調整搜尋條件，或清除條件後重新查看。</p><a asp-page="./Index" class="btn btn-brand">查看全部商品</a></div>
+    }
+    else
+    {
+        <div class="row g-4">
+            @foreach (var product in Model.Products)
+            {
+                var imageUrl = ResolveImageUrl(product.ImagePath);
+                <div class="col-xl-4 col-md-6">
+                    <article class="product-card h-100">
+                        <a asp-page="./Details" asp-route-code="@product.ProductCode" class="product-image-link">
+                            <div class="product-image-wrap">
+                                <img src="@imageUrl" alt="@product.Name" class="product-image" loading="lazy" onerror="this.onerror=null;this.src='@Url.Content("~/images/product-placeholder.svg")';" />
+                                <span class="product-status @GetStatusClass(product.Status)">@product.Status</span>
+                            </div>
+                        </a>
+                        <div class="product-card-body">
+                            <div class="product-meta"><span>@(string.IsNullOrWhiteSpace(product.Category) ? "精選商品" : product.Category)</span><span>@product.ProductCode</span></div>
+                            <h3><a asp-page="./Details" asp-route-code="@product.ProductCode">@product.Name</a></h3>
+                            <div class="product-card-footer">
+                                <div><span class="price-label">售價</span><div class="product-price">NT$ @product.Price.ToString("N0")</div></div>
+                                <div class="stock-copy">庫存 @product.StockQuantity</div>
+                            </div>
+                            <a asp-page="./Details" asp-route-code="@product.ProductCode" class="btn btn-product">查看商品</a>
+                        </div>
+                    </article>
+                </div>
+            }
+        </div>
+    }
+</section>

@@ -1,0 +1,25 @@
+@page
+@model WillyShop.Pages.Account.ProfileModel
+@{
+	ViewData["Title"] = "會員資料";
+}
+
+<h2>會員資料</h2>
+
+<div class="card mb-3" style="max-width:540px;">
+	<div class="card-body">
+		<dl class="row">
+			<dt class="col-sm-4">使用者帳號</dt>
+			<dd class="col-sm-8">@Model.Account</dd>
+
+			<dt class="col-sm-4">Email</dt>
+			<dd class="col-sm-8">@Model.Email</dd>
+
+			<dt class="col-sm-4">顯示名稱</dt>
+			<dd class="col-sm-8">@Model.DisplayName</dd>
+
+			<dt class="col-sm-4">系統權限</dt>
+			<dd class="col-sm-8">@Model.Role</dd>
+		</dl>
+	</div>
+</div>

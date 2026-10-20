@@ -1,0 +1,17 @@
+@page "{code?}"
+@model WillyShop.Pages.Admin.Products.EditModel
+@{ ViewData["Title"] = "修改商品"; }
+<h1>修改商品</h1>
+<form method="post">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <input type="hidden" asp-for="Product.ProductCode" />
+    <div class="mb-3"><label class="form-label">商品代碼</label><input value="@Model.Product.ProductCode" class="form-control" disabled /></div>
+    <div class="mb-3"><label asp-for="Product.Name" class="form-label">品名</label><input asp-for="Product.Name" class="form-control" /><span asp-validation-for="Product.Name" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Product.Category" class="form-label">商品類別</label><input asp-for="Product.Category" class="form-control" /></div>
+    <div class="mb-3"><label asp-for="Product.Price" class="form-label">價格</label><input asp-for="Product.Price" class="form-control" /></div>
+    <div class="mb-3"><label asp-for="Product.StockQuantity" class="form-label">庫存數量</label><input asp-for="Product.StockQuantity" class="form-control" /></div>
+    <div class="mb-3"><label asp-for="Product.Status" class="form-label">商品狀態</label><select asp-for="Product.Status" asp-items="Html.GetEnumSelectList<ProductStatus>()" class="form-select"></select></div>
+    <div class="mb-3"><label asp-for="Product.ImagePath" class="form-label">商品圖片路徑</label><input asp-for="Product.ImagePath" class="form-control" /></div>
+    <button type="submit" class="btn btn-primary">儲存</button> <a asp-page="/Products/Details" asp-route-code="@Model.Product.ProductCode" class="btn btn-secondary">取消</a>
+</form>
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

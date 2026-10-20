@@ -1,0 +1,84 @@
+@* 登入 Modal Partial *@
+<div class="modal fade" id="loginModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+	<div class="modal-content">
+	  <div class="modal-header">
+		<h5 class="modal-title">登入</h5>
+		<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+	  </div>
+	  <div class="modal-body">
+		<div id="loginError" class="alert alert-danger d-none"></div>
+		<form id="loginForm">
+		  <div class="mb-3">
+			<label for="loginAccount" class="form-label">使用者帳號</label>
+			<input type="text" class="form-control" id="loginAccount" autocomplete="username" required />
+		  </div>
+		  <div class="mb-3">
+			<label for="loginPassword" class="form-label">Password</label>
+			<input type="password" class="form-control" id="loginPassword" required />
+		  </div>
+		  <div class="mb-3 form-check">
+			<input type="checkbox" class="form-check-input" id="loginRemember" />
+			<label class="form-check-label" for="loginRemember">Remember me</label>
+		  </div>
+		  <input type="hidden" id="loginReturnUrl" />
+		</form>
+	  </div>
+	  <div class="modal-footer">
+		<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+		<button type="button" id="loginSubmitBtn" class="btn btn-primary">登入</button>
+	  </div>
+	</div>
+  </div>
+</div>
+
+@section Scripts {
+  <script>
+	// 全域：開啟登入 modal，預設 returnUrl
+	window.openLoginModal = function(returnUrl) {
+	  var loginModalEl = document.getElementById('loginModal');
+	  var loginModal = bootstrap.Modal.getOrCreateInstance(loginModalEl);
+	  document.getElementById('loginReturnUrl').value = returnUrl || window.location.pathname;
+	  document.getElementById('loginError').classList.add('d-none');
+	  loginModal.show();
+	};
+
+	document.getElementById('loginSubmitBtn').addEventListener('click', function() {
+	  var account = document.getElementById('loginAccount').value;
+	  var pwd = document.getElementById('loginPassword').value;
+	  var remember = document.getElementById('loginRemember').checked;
+	  var returnUrl = document.getElementById('loginReturnUrl').value;
+
+	  fetch('/api/ApiAccount/login', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ account: account, password: pwd, rememberMe: remember, returnUrl: returnUrl })
+	  }).then(async res => {
+		if (res.ok) {
+		  var data = await res.json();
+		  // success
+		  var loginModalEl = document.getElementById('loginModal');
+		  var loginModal = bootstrap.Modal.getInstance(loginModalEl);
+		  if (loginModal) loginModal.hide();
+
+		  // 若有 returnUrl，導向；否則重新整理頁面
+		  if (data && data.returnUrl) {
+			window.location.href = data.returnUrl;
+		  } else {
+			window.location.reload();
+		  }
+		} else {
+		  var json = await res.json();
+		  var err = json?.error || '登入失敗';
+		  var errEl = document.getElementById('loginError');
+		  errEl.textContent = err;
+		  errEl.classList.remove('d-none');
+		}
+	  }).catch(e => {
+		var errEl = document.getElementById('loginError');
+		errEl.textContent = 'Network error';
+		errEl.classList.remove('d-none');
+	  });
+	});
+  </script>
+}

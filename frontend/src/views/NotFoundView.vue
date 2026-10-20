@@ -1,0 +1,1 @@
+<template><section class="card auth-card"><h1>404</h1><p>找不到指定的頁面。</p><RouterLink class="button" to="/">返回商品列表</RouterLink></section></template>

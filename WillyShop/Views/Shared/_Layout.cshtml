@@ -1,0 +1,127 @@
+@using Microsoft.AspNetCore.Identity
+@using WillyShop.Models
+@inject UserManager<ApplicationUser> UserManager
+@{
+    ApplicationUser? currentUser = null;
+    string? currentRole = null;
+    if (User?.Identity?.IsAuthenticated == true)
+    {
+        currentUser = await UserManager.GetUserAsync(User);
+        currentRole = currentUser == null
+            ? null
+            : (await UserManager.GetRolesAsync(currentUser)).FirstOrDefault();
+    }
+}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Willy Shop</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/WillyShop.styles.css" asp-append-version="true" />
+</head>
+<body class="site-body">
+    <header class="site-header sticky-top">
+        <div class="top-bar">
+            <div class="container d-flex justify-content-between align-items-center">
+                <span>舒適生活，從每一步開始</span>
+                <span class="d-none d-sm-inline">安心選購・快速出貨・會員專屬服務</span>
+            </div>
+        </div>
+        <nav class="navbar navbar-expand-lg navbar-light site-navbar">
+            <div class="container">
+                <a class="navbar-brand brand-lockup" asp-page="/Products/Index">
+                    <span class="brand-mark" aria-hidden="true">S</span>
+                    <span><strong>Willy Shop</strong><small>COMFORT FOOTWEAR</small></span>
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse justify-content-between">
+                    <ul class="navbar-nav site-nav-links">
+                        <li class="nav-item">
+                            <a class="nav-link" asp-page="/Products/Index">商品選購</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-page="/Cart/Index">購物車</a>
+                        </li>
+                        @if (User?.IsInRole(SystemRoles.Store) == true || User?.IsInRole(SystemRoles.Admin) == true || User?.IsInRole(SystemRoles.System) == true)
+                        {
+                            <li class="nav-item"><a class="nav-link" asp-page="/Admin/Products/Index">商品管理</a></li>
+                        }
+                        @if (User?.IsInRole(SystemRoles.Admin) == true || User?.IsInRole(SystemRoles.System) == true)
+                        {
+                            <li class="nav-item"><a class="nav-link" asp-page="/Admin/Users/Index">帳號管理</a></li>
+                        }
+                    </ul>
+                    <ul class="navbar-nav account-nav align-items-lg-center">
+                        @if (User?.Identity?.IsAuthenticated == true)
+                        {
+                            @if (currentUser != null)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link account-link" asp-page="/Account/Profile">
+                                        <span class="account-avatar">@((currentUser.DisplayName ?? currentUser.UserName ?? "U").Substring(0, 1).ToUpperInvariant())</span>
+                                        <span class="account-copy"><strong>@(currentUser.DisplayName ?? currentUser.UserName)</strong><small>@(currentRole ?? SystemRoles.Guest)</small></span>
+                                    </a>
+                                </li>
+                            }
+                            <li class="nav-item">
+                                <form asp-area="Identity" asp-page="/Account/Logout" method="post" id="logoutForm">
+                                    <button type="submit" class="btn btn-outline-brand btn-sm">登出</button>
+                                </form>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" asp-area="Identity" asp-page="/Account/Login">登入</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="btn btn-brand btn-sm" asp-area="Identity" asp-page="/Account/Register">免費註冊</a>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container site-content">
+        <main role="main">
+            @RenderBody()
+        </main>
+    </div>
+
+    @* 登入 Modal partial *@
+    @await Html.PartialAsync("_LoginModal")
+
+    <script>
+        // 全域變數：表示使用者是否已登入
+        window.isAuthenticated = @((User?.Identity?.IsAuthenticated == true) ? "true" : "false");
+    </script>
+
+    <footer class="site-footer">
+        <div class="container">
+            <div class="row g-4 align-items-center">
+                <div class="col-md-7">
+                    <div class="footer-brand">Willy Shop</div>
+                    <p class="mb-0">提供舒適、耐穿且適合日常生活的鞋款選擇。</p>
+                </div>
+                <div class="col-md-5 text-md-end">
+                    <a asp-page="/Products/Index">商品選購</a>
+                    <a asp-area="" asp-controller="Home" asp-action="Privacy">隱私權政策</a>
+                    <div class="footer-copyright">&copy; 2026 Willy Shop</div>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/site-extras.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

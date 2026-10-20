@@ -1,0 +1,1 @@
+<template><section class="card auth-card"><h1>403</h1><p>你沒有權限存取這個頁面。</p><RouterLink class="button" to="/">返回商品列表</RouterLink></section></template>
