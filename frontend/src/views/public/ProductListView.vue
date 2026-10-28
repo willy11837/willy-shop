@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { getOnSaleProducts, getProducts } from '@/api/products'
 import { useCartStore } from '@/stores/cart'
-import type { Product } from '@/types/product'
+import { productStatuses, type Product } from '@/types/product'
 import { errorMessage } from '@/utils/errors'
 
 const cart = useCartStore()
@@ -38,6 +38,10 @@ async function loadOnSaleProducts(): Promise<void> {
 
 const pageCount = computed(() => Math.max(1, Math.ceil(totalCount.value / query.pageSize)))
 
+function isPurchasable(product: Product): boolean {
+  return product.status === productStatuses.available && product.stockQuantity > 0
+}
+
 async function searchProducts(): Promise<void> {
   query.page = 1
   await load()
@@ -49,6 +53,7 @@ async function changePage(page: number): Promise<void> {
 }
 
 async function add(product: Product): Promise<void> {
+  if (!isPurchasable(product)) return
   error.value = ''
   message.value = ''
   try {
@@ -69,14 +74,19 @@ onMounted(() => {
       <div class="sale-marquee-label">特價快訊</div>
       <div class="sale-marquee-viewport">
         <div class="sale-marquee-track">
-          <span v-for="(product, index) in [...onSaleProducts, ...onSaleProducts]" :key="`${product.productCode}-${index}`" class="sale-marquee-item">
+          <RouterLink
+            v-for="product in onSaleProducts"
+            :key="product.productCode"
+            class="sale-marquee-item"
+            :to="{ name: 'product-details', params: { productCode: product.productCode } }"
+          >
             {{ product.name }} NT$ {{ product.effectivePrice.toLocaleString() }}
-          </span>
+          </RouterLink>
         </div>
       </div>
     </div>
     <div class="page-header">
-      <div><h1>商品列表</h1><p class="muted">瀏覽目前可銷售且有庫存的商品。</p></div>
+      <div><h1>商品列表</h1><p class="muted">瀏覽可銷售商品，缺貨商品仍可查看並訂閱到貨通知。</p></div>
       <form class="actions" @submit.prevent="searchProducts">
         <input v-model.trim="query.productCode" aria-label="商品代碼" placeholder="商品代碼" />
         <input v-model.trim="query.productName" aria-label="商品名稱" placeholder="商品名稱" />
@@ -95,6 +105,10 @@ onMounted(() => {
       <article v-for="product in products" :key="product.productCode" class="card product-card">
         <img class="product-image" :src="product.imageUrl || '/vite.svg'" :alt="product.name" />
         <div><strong>{{ product.name }}</strong><div class="muted">{{ product.category || '未分類' }}</div></div>
+        <div class="product-availability">
+          <span>庫存：{{ product.stockQuantity }}</span>
+          <span :class="{ 'out-of-stock': !isPurchasable(product) }">{{ product.statusName }}</span>
+        </div>
         <div>
           <span class="price-status">{{ product.priceStatusName }}</span>
           <div v-if="product.isOnSale" class="price-row">
@@ -105,7 +119,9 @@ onMounted(() => {
         </div>
         <div class="actions">
           <RouterLink class="button secondary" :to="`/products/${product.productCode}`">查看</RouterLink>
-          <button class="button" type="button" @click="add(product)">加入購物車</button>
+          <button class="button" type="button" :disabled="!isPurchasable(product)" @click="add(product)">
+            {{ isPurchasable(product) ? '加入購物車' : '數量不足' }}
+          </button>
         </div>
       </article>
     </div>
@@ -121,10 +137,14 @@ onMounted(() => {
 <style scoped>
 .sale-marquee{display:flex;align-items:center;margin-bottom:24px;overflow:hidden;border-radius:10px;color:#7a271a;background:#ffebe8}
 .sale-marquee-label{z-index:1;flex:0 0 auto;padding:12px 16px;color:white;background:#b42318;font-weight:800}
-.sale-marquee-viewport{overflow:hidden;white-space:nowrap}
-.sale-marquee-track{display:inline-flex;min-width:max-content;animation:marquee 24s linear infinite}
-.sale-marquee-item{padding:0 28px;font-weight:700}
+.sale-marquee-viewport{flex:1;overflow:hidden;white-space:nowrap}
+.sale-marquee-track{display:inline-flex;min-width:max-content;padding-left:100%;animation:marquee 24s linear infinite}
+.sale-marquee-item{padding:0 28px;color:inherit;font-weight:700;text-decoration:none}
+.sale-marquee-item:hover{text-decoration:underline}
+.sale-marquee-item:focus-visible{border-radius:4px;outline:2px solid currentColor;outline-offset:2px}
 .sale-marquee:hover .sale-marquee-track,.sale-marquee:focus-within .sale-marquee-track{animation-play-state:paused}
-@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.product-availability{display:flex;justify-content:space-between;gap:12px;color:#475467}
+.out-of-stock{color:#b42318;font-weight:700}
+@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
 @media (prefers-reduced-motion:reduce){.sale-marquee-track{animation:none;white-space:normal;flex-wrap:wrap;gap:8px;padding:10px}.sale-marquee-item{padding:0 8px}}
 </style>

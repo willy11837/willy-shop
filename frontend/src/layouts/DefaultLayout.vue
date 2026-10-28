@@ -10,8 +10,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const cart = useCartStore()
 const notifications = useNotificationStore()
-const canManageProducts = computed(() => auth.hasAnyRole([roles.system, roles.admin, roles.store]))
-const canManageUsers = computed(() => auth.hasAnyRole([roles.system, roles.admin]))
+const canAccessAdmin = computed(() => auth.hasAnyRole([roles.system, roles.admin, roles.store]))
 
 onMounted(() => cart.load())
 watch(
@@ -41,8 +40,7 @@ async function signOut(): Promise<void> {
             通知 <span v-if="notifications.unreadCount" class="badge">{{ notifications.unreadCount }}</span>
           </RouterLink>
           <RouterLink v-if="auth.isAuthenticated" to="/profile">個人資料</RouterLink>
-          <RouterLink v-if="canManageProducts" to="/admin/products">商品管理</RouterLink>
-          <RouterLink v-if="canManageUsers" to="/admin/users">帳號管理</RouterLink>
+          <RouterLink v-if="canAccessAdmin" :to="{ name: 'admin' }">管理後台</RouterLink>
           <RouterLink v-if="!auth.isAuthenticated" to="/login">登入</RouterLink>
           <RouterLink v-if="!auth.isAuthenticated" to="/register">註冊</RouterLink>
           <button v-if="auth.isAuthenticated" class="link-button" type="button" @click="signOut">

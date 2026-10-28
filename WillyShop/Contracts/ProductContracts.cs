@@ -51,20 +51,27 @@ public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSi
 
 public static class ProductMappings
 {
-    public static ProductDto ToDto(Product product) => new(
-        product.ProductCode,
-        product.Name,
-        product.Price,
-        product.IsOnSale,
-        product.SalePrice,
-        product.EffectivePrice,
-        product.IsOnSale ? "特價" : "原價",
-        product.Category,
-        product.StockQuantity,
-        product.Status,
-        product.Status.ToString(),
-        Services.CartApplicationService.NormalizeImageUrl(product.ImagePath),
-        product.CreatedAt,
-        product.ModifiedBy,
-        product.ModifiedAt);
+    public static ProductDto ToDto(Product product)
+    {
+        var status = product.StockQuantity <= 0
+            ? ProductStatus.數量不足
+            : product.Status;
+
+        return new ProductDto(
+            product.ProductCode,
+            product.Name,
+            product.Price,
+            product.IsOnSale,
+            product.SalePrice,
+            product.EffectivePrice,
+            product.IsOnSale ? "特價" : "原價",
+            product.Category,
+            product.StockQuantity,
+            status,
+            status.ToString(),
+            Services.CartApplicationService.NormalizeImageUrl(product.ImagePath),
+            product.CreatedAt,
+            product.ModifiedBy,
+            product.ModifiedAt);
+    }
 }

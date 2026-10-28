@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { createProduct, deleteProduct, getAdminProducts, updateProduct } from '@/api/products'
-import type { Product, SaveProductRequest } from '@/types/product'
+import { productStatuses, type Product, type SaveProductRequest } from '@/types/product'
 import { errorMessage } from '@/utils/errors'
 
 const products = ref<Product[]>([])
@@ -17,10 +17,18 @@ const blank = (): SaveProductRequest => ({
   salePrice: null,
   category: '',
   stockQuantity: 0,
-  status: 0,
+  status: productStatuses.outOfStock,
   imagePath: '',
 })
 const form = reactive<SaveProductRequest>(blank())
+
+watch(() => form.stockQuantity, (quantity, previousQuantity) => {
+  if (quantity <= 0) {
+    form.status = productStatuses.outOfStock
+  } else if (previousQuantity <= 0 && form.status === productStatuses.outOfStock) {
+    form.status = productStatuses.available
+  }
+})
 
 async function load(): Promise<void> {
   error.value = ''
@@ -103,11 +111,12 @@ onMounted(load)
         </label>
         <label class="form-row">庫存<input v-model.number="form.stockQuantity" type="number" min="0" required /></label>
         <label class="form-row">商品狀態
-          <select v-model.number="form.status">
+          <select v-model.number="form.status" :disabled="form.stockQuantity <= 0">
             <option :value="0">可銷售</option>
             <option :value="1">凍結</option>
             <option :value="2">數量不足</option>
           </select>
+          <small v-if="form.stockQuantity <= 0" class="muted">庫存為 0 時會強制設為數量不足。</small>
         </label>
         <label class="form-row">圖片路徑
           <input v-model.trim="form.imagePath" placeholder="~/images/example.webp" />

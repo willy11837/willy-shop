@@ -236,7 +236,7 @@ internal class Program
 							Ensure(activeSubscriptions == 1, $"有效訂閱應為 1，實際 {activeSubscriptions}");
 						}
 
-						HttpResponseMessage frozen = await SendWithCsrfAsync(admin, HttpMethod.Put, "/api/v1/admin/products/" + productCode, new
+						HttpResponseMessage forcedOutOfStock = await SendWithCsrfAsync(admin, HttpMethod.Put, "/api/v1/admin/products/" + productCode, new
 						{
 							productCode = productCode,
 							name = "整合測試商品-已修改",
@@ -246,11 +246,22 @@ internal class Program
 							status = 1,
 							imagePath = "~/images/product-placeholder.svg"
 						});
-						Ensure(frozen.IsSuccessStatusCode, $"設定凍結 HTTP {(int)frozen.StatusCode}");
+						Ensure(forcedOutOfStock.IsSuccessStatusCode, $"零庫存狀態強制 HTTP {(int)forcedOutOfStock.StatusCode}");
+						JsonElement forcedProduct = await ReadEnvelopeDataAsync(forcedOutOfStock);
+						Ensure(forcedProduct.GetProperty("status").GetInt32() == 2
+							&& forcedProduct.GetProperty("statusName").GetString() == "數量不足",
+							"零庫存 API 回應未強制為數量不足");
 						await using (ApplicationDbContext db = new ApplicationDbContext(dbOptions))
 						{
-							Ensure(await db.UserNotifications.CountAsync(value => value.UserId == userId) == 0, "缺貨轉凍結不應建立通知");
+							Product product = await db.Products.AsNoTracking().SingleAsync(value => value.ProductCode == productCode);
+							Ensure(product.Status == ProductStatus.數量不足, "零庫存 DB 狀態未強制為數量不足");
+							Ensure(await db.UserNotifications.CountAsync(value => value.UserId == userId) == 0, "缺貨狀態正規化不應建立通知");
 						}
+						JsonElement publicProducts = await GetEnvelopeDataAsync(shopper, $"/api/v1/products?productCode={productCode}");
+						JsonElement publicProduct = publicProducts.GetProperty("items")[0];
+						Ensure(publicProducts.GetProperty("totalCount").GetInt32() == 1
+							&& publicProduct.GetProperty("status").GetInt32() == 2,
+							"零庫存商品未顯示於公開商品列表");
 
 						HttpResponseMessage available = await SendWithCsrfAsync(admin, HttpMethod.Put, "/api/v1/admin/products/" + productCode, new
 						{

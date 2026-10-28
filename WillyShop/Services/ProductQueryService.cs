@@ -14,7 +14,7 @@ public sealed class ProductQueryService
     public async Task<PagedResult<ProductDto>> SearchAsync(ProductQuery request, CancellationToken cancellationToken)
     {
         var query = _db.Products.AsNoTracking()
-            .Where(product => product.Status == ProductStatus.可銷售 && product.StockQuantity > 0);
+            .Where(product => product.Status == ProductStatus.可銷售 || product.StockQuantity <= 0);
 
         if (!string.IsNullOrWhiteSpace(request.ProductCode))
         {

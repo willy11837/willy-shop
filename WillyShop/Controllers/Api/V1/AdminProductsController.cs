@@ -82,7 +82,9 @@ public sealed class AdminProductsController : ApiControllerBase
         product.IsOnSale = request.IsOnSale;
         product.SalePrice = request.IsOnSale ? request.SalePrice : null;
         product.StockQuantity = request.StockQuantity;
-        product.Status = request.Status;
+        product.Status = request.StockQuantity <= 0
+            ? ProductStatus.數量不足
+            : request.Status;
         product.ImagePath = request.ImagePath?.Trim();
         product.ModifiedBy = User.Identity?.Name;
         product.ModifiedAt = DateTime.UtcNow;
