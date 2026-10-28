@@ -3,18 +3,15 @@
 從 Repository 根目錄執行：
 
 ```powershell
-$env:SMOKE_ADMIN_PASSWORD = '<development-admin-password>'
-$env:SMOKE_SYSTEM_PASSWORD = '<development-system-password>'
 powershell -ExecutionPolicy Bypass -File .\tools\run-integration-tests.ps1
-Remove-Item Env:SMOKE_ADMIN_PASSWORD, Env:SMOKE_SYSTEM_PASSWORD
 ```
 
-`SMOKE_ADMIN_PASSWORD` 與 `SMOKE_SYSTEM_PASSWORD` 必須符合本機開發資料庫中管理帳號的密碼。腳本只會在目前程序與其子程序中使用這些值，不會將密碼寫入 Repository。若資料庫尚無對應帳號，後端會透過暫時設定的 `SeedUsers__AdminPassword` 與 `SeedUsers__SystemPassword` 建立開發帳號。
+測試會在 `WebApp1Db` 建立唯一的合成 Admin、System 與一般會員帳號，不會使用或修改既有管理帳號。所有合成帳號、Refresh Token、購物車、訂單與商品資料都會在 `finally` 清除。
 
 腳本會建置 ASP.NET Core 與 Vue、啟動兩個開發伺服器，並透過 Vite `/api` Proxy 測試：
 
 - 公開商品 API
-- Identity Cookie 登入／註冊／登出
+- JWT 登入／註冊／Refresh Token rotation／登出
 - CSRF
 - 匿名 Session 購物車與登入合併
 - 會員購物車 CRUD

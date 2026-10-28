@@ -1,0 +1,14 @@
+@page
+@model WebApplication1.Pages.Admin.Users.CreateModel
+@{ ViewData["Title"] = "新增帳號"; }
+<h1>新增帳號</h1>
+<form method="post">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <div class="mb-3"><label asp-for="Input.Account" class="form-label">帳號</label><input asp-for="Input.Account" class="form-control" /><span asp-validation-for="Input.Account" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Input.Name" class="form-label">名稱</label><input asp-for="Input.Name" class="form-control" /><span asp-validation-for="Input.Name" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Input.Email" class="form-label">Email</label><input asp-for="Input.Email" class="form-control" /><span asp-validation-for="Input.Email" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Input.Password" class="form-label">密碼</label><input asp-for="Input.Password" class="form-control" /><span asp-validation-for="Input.Password" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Input.Role" class="form-label">權限</label><select asp-for="Input.Role" class="form-select">@foreach(var role in Model.AvailableRoles){<option value="@role">@role</option>}</select></div>
+    <button class="btn btn-primary">新增</button> <a asp-page="./Index" class="btn btn-secondary">取消</a>
+</form>
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

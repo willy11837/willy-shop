@@ -1,0 +1,46 @@
+@page
+@model WebApplication1.Pages.Cart.IndexModel
+@{
+	ViewData["Title"] = "Cart";
+}
+
+<h1>購物車</h1>
+
+@if (Model.Items.Count == 0)
+{
+	<p>購物車為空</p>
+}
+else
+{
+	<table class="table">
+		<thead>
+			<tr><th>商品</th><th>單價</th><th>數量</th><th>小計</th><th>操作</th></tr>
+		</thead>
+		<tbody>
+		@foreach (var item in Model.Items)
+		{
+			<tr>
+				<td>@item.Name (@item.ProductCode)</td>
+				<td>@item.UnitPrice.ToString("C")</td>
+				<td>@item.Quantity</td>
+				<td>@item.Subtotal.ToString("C")</td>
+				<td>
+					<form method="post" asp-page-handler="Remove">
+						<input type="hidden" name="id" value="@item.Id" />
+						<button type="submit" class="btn btn-sm btn-danger">移除</button>
+					</form>
+				</td>
+			</tr>
+		}
+		</tbody>
+		<tfoot>
+			<tr>
+				<td colspan="3" class="text-end"><strong>總計：</strong></td>
+				<td colspan="2">
+					@Model.Items.Sum(i => i.Subtotal).ToString("C")
+				</td>
+			</tr>
+		</tfoot>
+	</table>
+	<a asp-page="/Checkout/Index" class="btn btn-primary">前往結帳</a>
+}

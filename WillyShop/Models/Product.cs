@@ -24,6 +24,14 @@ namespace WillyShop.Models
         [Column(TypeName = "decimal(18,2)")]
         public decimal Price { get; set; } = 0m; // 單價
 
+        public bool IsOnSale { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? SalePrice { get; set; }
+
+        [NotMapped]
+        public decimal EffectivePrice => IsOnSale && SalePrice.HasValue ? SalePrice.Value : Price;
+
         public string? Category { get; set; } // 商品類別
 
         public int StockQuantity { get; set; } // 庫存數量

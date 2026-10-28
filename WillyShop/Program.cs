@@ -1,17 +1,43 @@
-using System;
-using Microsoft.EntityFrameworkCore;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.IdentityModel.Tokens;
 using WillyShop.Data;
+using WillyShop.Contracts;
+using WillyShop.Filters;
+using WillyShop.Models;
+using WillyShop.Options;
+using WillyShop.Services.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddControllersWithViews();
-builder.Services.AddRazorPages();
+builder.Services.AddControllers(options => options.Filters.Add<ApiAntiforgeryFilter>());
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(entry => entry.Value?.Errors.Count > 0)
+            .ToDictionary(
+                entry => entry.Key,
+                entry => entry.Value!.Errors
+                    .Select(error => string.IsNullOrWhiteSpace(error.ErrorMessage) ? "輸入資料格式不正確。" : error.ErrorMessage)
+                    .ToArray());
+        return new BadRequestObjectResult(new ApiResponse<ApiValidationErrorData>(
+            false,
+            StatusCodes.Status400BadRequest,
+            string.Join("、", errors.Values.SelectMany(values => values).Distinct()),
+            new ApiValidationErrorData(errors)));
+    };
+});
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 
 // 中文註解：註冊 ASP.NET Core Identity 作為應用程式的認證/授權系統，並使用 ApplicationDbContext 作為儲存層。
-builder.Services.AddDefaultIdentity<WillyShop.Models.ApplicationUser>(options =>
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
 {
     // 中文提示：設定密碼強度要求，可依需求調整
     options.SignIn.RequireConfirmedAccount = false;
@@ -23,9 +49,11 @@ builder.Services.AddDefaultIdentity<WillyShop.Models.ApplicationUser>(options =>
     options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
     options.Lockout.MaxFailedAccessAttempts = 5;
     options.User.RequireUniqueEmail = true;
+    options.Stores.MaxLengthForKeys = 128;
 })
     .AddRoles<IdentityRole>()
-    .AddEntityFrameworkStores<ApplicationDbContext>();
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
 
 // 中文提示：注入客製化的 IdentityErrorDescriber 以回傳中文驗證錯誤訊息
 builder.Services.AddScoped<Microsoft.AspNetCore.Identity.IdentityErrorDescriber, WillyShop.Models.ChineseIdentityErrorDescriber>();
@@ -43,68 +71,161 @@ builder.Services.AddSession(options =>
 builder.Services.AddScoped<WillyShop.Services.CartService>();
 builder.Services.AddScoped<WillyShop.Services.CartApplicationService>();
 builder.Services.AddScoped<WillyShop.Services.OrderApplicationService>();
-builder.Services.AddScoped<WillyShop.Data.ProductRepository>();
+builder.Services.AddScoped<WillyShop.Services.ProductQueryService>();
+builder.Services.AddScoped<WillyShop.Services.NotificationService>();
+builder.Services.AddScoped<ITokenService, TokenService>();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-builder.Services.ConfigureApplicationCookie(options =>
+var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
+builder.Services.Configure<JwtOptions>(jwtSection);
+var jwtOptions = jwtSection.Get<JwtOptions>() ?? new JwtOptions();
+if (string.IsNullOrWhiteSpace(jwtOptions.Issuer)
+    || string.IsNullOrWhiteSpace(jwtOptions.Audience)
+    || Encoding.UTF8.GetByteCount(jwtOptions.SigningKey) < 32)
+    throw new InvalidOperationException("Jwt 設定不完整；SigningKey 必須至少 32 bytes。");
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidAudience = jwtOptions.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
+            NameClaimType = System.Security.Claims.ClaimTypes.Name,
+            RoleClaimType = System.Security.Claims.ClaimTypes.Role,
+            ClockSkew = TimeSpan.FromSeconds(jwtOptions.ClockSkewSeconds)
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new ApiResponse<object?>(
+                    false,
+                    StatusCodes.Status401Unauthorized,
+                    "需要有效的登入憑證。",
+                    null));
+            },
+            OnForbidden = async context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new ApiResponse<object?>(
+                    false,
+                    StatusCodes.Status403Forbidden,
+                    "目前帳號沒有執行此操作的權限。",
+                    null));
+            }
+        };
+    });
+builder.Services.AddAuthorization();
+
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(options =>
 {
-    options.Events.OnRedirectToLogin = context =>
+    options.AddDefaultPolicy(policy =>
     {
-        if (context.Request.Path.StartsWithSegments("/api"))
-        {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return Task.CompletedTask;
-        }
-
-        context.Response.Redirect(context.RedirectUri);
-        return Task.CompletedTask;
-    };
-    options.Events.OnRedirectToAccessDenied = context =>
-    {
-        if (context.Request.Path.StartsWithSegments("/api"))
-        {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return Task.CompletedTask;
-        }
-
-        context.Response.Redirect(context.RedirectUri);
-        return Task.CompletedTask;
-    };
+        if (allowedOrigins.Length > 0)
+            policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+    });
 });
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
+app.UseExceptionHandler(exceptionHandlerApp =>
 {
-    app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
-}
+    exceptionHandlerApp.Run(async context =>
+    {
+        var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        context.RequestServices.GetRequiredService<ILogger<Program>>()
+            .LogError(exception, "Unhandled exception while processing {Method} {Path}", context.Request.Method, context.Request.Path);
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(new ApiResponse<object?>(
+            false,
+            StatusCodes.Status500InternalServerError,
+            "伺服器發生未預期的錯誤。",
+            null));
+    });
+});
+app.UseStatusCodePages(async context =>
+{
+    var response = context.HttpContext.Response;
+    if (!context.HttpContext.Request.Path.StartsWithSegments("/api")
+        || response.HasStarted
+        || response.ContentLength is > 0)
+        return;
+
+    var message = response.StatusCode switch
+    {
+        StatusCodes.Status400BadRequest => "要求無效",
+        StatusCodes.Status401Unauthorized => "需要有效的登入憑證。",
+        StatusCodes.Status403Forbidden => "目前帳號沒有執行此操作的權限。",
+        StatusCodes.Status404NotFound => "找不到要求的資源。",
+        StatusCodes.Status409Conflict => "資料發生衝突。",
+        _ => "要求失敗。"
+    };
+    await response.WriteAsJsonAsync(new ApiResponse<object?>(false, response.StatusCode, message, null));
+});
+if (!app.Environment.IsDevelopment()) app.UseHsts();
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
+var staticFileContentTypeProvider = new FileExtensionContentTypeProvider();
+staticFileContentTypeProvider.Mappings[".webp"] = "image/webp";
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = staticFileContentTypeProvider
+});
+var frontendDistPath = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "frontend", "dist"));
+if (Directory.Exists(frontendDistPath))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(frontendDistPath),
+        ContentTypeProvider = staticFileContentTypeProvider
+    });
+}
 
 app.UseRouting();
+app.UseCors();
 
 // 中文註解：啟用 Session 與 Authentication/Authorization 中介軟體。
 app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
-app.MapRazorPages();
-
-// 中文註解：將網站根路由導向商品列表頁，讓 / 直接顯示 Products 頁面。
-app.MapGet("/", async context =>
+app.MapControllers();
+app.MapFallback("/api/{**path}", () => Results.Json(
+    new ApiResponse<object?>(false, StatusCodes.Status404NotFound, "要求的 API 路由不存在。", null),
+    statusCode: StatusCodes.Status404NotFound));
+var publishedSpaIndexPath = Path.Combine(app.Environment.WebRootPath ?? string.Empty, "index.html");
+var spaIndexPath = File.Exists(publishedSpaIndexPath)
+    ? publishedSpaIndexPath
+    : Path.Combine(frontendDistPath, "index.html");
+app.MapFallback(async context =>
 {
-    context.Response.Redirect("/Products");
-    await Task.CompletedTask;
+    if (!File.Exists(spaIndexPath))
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await context.Response.WriteAsJsonAsync(new ApiResponse<object?>(
+            false,
+            StatusCodes.Status503ServiceUnavailable,
+            "請先執行 frontend production build。",
+            null));
+        return;
+    }
+
+    context.Response.ContentType = "text/html; charset=utf-8";
+    await context.Response.SendFileAsync(spaIndexPath);
 });
 
 // 中文註解：啟動時執行資料種子，包括建立 Admin 角色與範例商品資料。
@@ -134,7 +255,40 @@ using (var scope = app.Services.CreateScope())
 
         AddProductIfMissing("P001", "灰色室內拖鞋", "拖鞋", 10, WillyShop.Models.ProductStatus.可銷售, 199m, "~/images/slipper1.jpg");
         AddProductIfMissing("P002", "黑色室外拖鞋", "拖鞋", 5, WillyShop.Models.ProductStatus.可銷售, 249m, "~/images/slipper2.jpg");
-        AddProductIfMissing("P003", "藍色防滑拖鞋", "拖鞋", 8, WillyShop.Models.ProductStatus.可銷售, 299m, "~/images/slipper1.svg");
+        AddProductIfMissing("P004", "純棉短袖 T 恤", "服飾", 24, WillyShop.Models.ProductStatus.可銷售, 390m, "~/images/product-placeholder.svg");
+        AddProductIfMissing("P005", "防風連帽外套", "服飾", 12, WillyShop.Models.ProductStatus.可銷售, 1280m, "~/images/product-placeholder.svg");
+        AddProductIfMissing("P006", "都會通勤後背包", "包包", 15, WillyShop.Models.ProductStatus.可銷售, 990m, "~/images/commuter-backpack.webp");
+        AddProductIfMissing("P007", "輕量休閒斜背包", "包包", 18, WillyShop.Models.ProductStatus.可銷售, 590m, "~/images/product-placeholder.svg");
+        AddProductIfMissing("P008", "不鏽鋼保溫杯", "居家生活", 30, WillyShop.Models.ProductStatus.可銷售, 450m, "~/images/product-placeholder.svg");
+        AddProductIfMissing("P009", "木質香氛擴香組", "居家生活", 20, WillyShop.Models.ProductStatus.可銷售, 680m, "~/images/product-placeholder.svg");
+        AddProductIfMissing("P010", "20W USB-C 快速充電器", "3C 配件", 25, WillyShop.Models.ProductStatus.可銷售, 490m, "~/images/product-placeholder.svg");
+        AddProductIfMissing("P011", "尼龍編織充電線", "3C 配件", 40, WillyShop.Models.ProductStatus.可銷售, 299m, "~/images/product-placeholder.svg");
+        AddProductIfMissing("P012", "防滑瑜珈墊", "運動用品", 14, WillyShop.Models.ProductStatus.可銷售, 790m, "~/images/product-placeholder.svg");
+        AddProductIfMissing("P013", "戶外運動水壺", "運動用品", 22, WillyShop.Models.ProductStatus.可銷售, 350m, "~/images/product-placeholder.svg");
+
+        // 僅修正仍使用系統預設圖的既有商品，不覆蓋管理員自行設定的圖片。
+        var commuterBackpack = db.Products.FirstOrDefault(product => product.ProductCode == "P006");
+        if (commuterBackpack != null
+            && (string.IsNullOrWhiteSpace(commuterBackpack.ImagePath)
+                || commuterBackpack.ImagePath == "~/images/product-placeholder.svg"
+                || commuterBackpack.ImagePath == "~/images/sg-11134201-8259z-mt0hdomgmnex96@resize_w900_nl.webp"))
+        {
+            commuterBackpack.ImagePath = "~/images/commuter-backpack.webp";
+            commuterBackpack.ModifiedBy = "System";
+            commuterBackpack.ModifiedAt = DateTime.UtcNow;
+        }
+
+        // 移除舊版系統建立的 P003 假資料；若後台已改成其他商品則保留。
+        var obsoleteSeedProduct = db.Products.FirstOrDefault(product =>
+            product.ProductCode == "P003"
+            && product.Name == "藍色防滑拖鞋"
+            && product.Category == "拖鞋"
+            && product.ModifiedBy == "System");
+        if (obsoleteSeedProduct != null)
+        {
+            db.Products.Remove(obsoleteSeedProduct);
+        }
+
         db.SaveChanges();
 
         // 建立五種系統角色與開發用管理帳號。

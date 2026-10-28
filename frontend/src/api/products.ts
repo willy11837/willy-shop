@@ -1,24 +1,29 @@
-import { http } from './http'
-import type { Product, SaveProductRequest } from '@/types/product'
+import { http, requireApiData } from './http'
+import type { ApiResponse } from '@/types/api'
+import type { PagedProducts, Product, ProductQuery, SaveProductRequest } from '@/types/product'
 
-export async function getProducts(search = '', category = ''): Promise<Product[]> {
-  return (await http.get<Product[]>('/products', { params: { search: search || undefined, category: category || undefined } })).data
+export async function getProducts(query: ProductQuery = {}): Promise<PagedProducts> {
+  return requireApiData(await http.get<ApiResponse<PagedProducts>>('/products', { params: query }))
 }
 
 export async function getProduct(productCode: string): Promise<Product> {
-  return (await http.get<Product>(`/products/${encodeURIComponent(productCode)}`)).data
+  return requireApiData(await http.get<ApiResponse<Product>>(`/products/${encodeURIComponent(productCode)}`))
+}
+
+export async function getOnSaleProducts(): Promise<Product[]> {
+  return requireApiData(await http.get<ApiResponse<Product[]>>('/products/on-sale'))
 }
 
 export async function getAdminProducts(): Promise<Product[]> {
-  return (await http.get<Product[]>('/admin/products')).data
+  return requireApiData(await http.get<ApiResponse<Product[]>>('/admin/products'))
 }
 
 export async function createProduct(request: SaveProductRequest): Promise<Product> {
-  return (await http.post<Product>('/admin/products', request)).data
+  return requireApiData(await http.post<ApiResponse<Product>>('/admin/products', request))
 }
 
 export async function updateProduct(code: string, request: SaveProductRequest): Promise<Product> {
-  return (await http.put<Product>(`/admin/products/${encodeURIComponent(code)}`, request)).data
+  return requireApiData(await http.put<ApiResponse<Product>>(`/admin/products/${encodeURIComponent(code)}`, request))
 }
 
 export async function deleteProduct(code: string): Promise<void> {

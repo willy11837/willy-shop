@@ -41,7 +41,7 @@ public sealed class CartApplicationService
         var items = rawItems.Select(item =>
         {
             products.TryGetValue(item.ProductCode, out var product);
-            var price = product?.Price ?? 0m;
+            var price = product?.EffectivePrice ?? 0m;
             return new CartItemDto(
                 item.Id,
                 item.ProductCode,

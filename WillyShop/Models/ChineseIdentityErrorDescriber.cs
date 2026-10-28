@@ -30,6 +30,11 @@ namespace WillyShop.Models
             return new IdentityError { Code = nameof(PasswordRequiresUpper), Description = "密碼必須包含大寫字母。" };
         }
 
+        public override IdentityError PasswordMismatch()
+        {
+            return new IdentityError { Code = nameof(PasswordMismatch), Description = "目前密碼不正確。" };
+        }
+
         public override IdentityError DuplicateEmail(string email)
         {
             return new IdentityError { Code = nameof(DuplicateEmail), Description = $"電子郵件 {email} 已被使用。" };

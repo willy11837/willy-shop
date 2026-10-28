@@ -1,20 +1,21 @@
-import { http } from './http'
+import { http, requireApiData } from './http'
+import type { ApiResponse } from '@/types/api'
 import type { AdminUser, CreateUserRequest, UpdateUserRequest } from '@/types/admin'
 
 export async function getAdminUsers(): Promise<AdminUser[]> {
-  return (await http.get<AdminUser[]>('/admin/users')).data
+  return requireApiData(await http.get<ApiResponse<AdminUser[]>>('/admin/users'))
 }
 
 export async function getAssignableRoles(): Promise<string[]> {
-  return (await http.get<string[]>('/admin/users/roles')).data
+  return requireApiData(await http.get<ApiResponse<string[]>>('/admin/users/roles'))
 }
 
 export async function createAdminUser(request: CreateUserRequest): Promise<AdminUser> {
-  return (await http.post<AdminUser>('/admin/users', request)).data
+  return requireApiData(await http.post<ApiResponse<AdminUser>>('/admin/users', request))
 }
 
 export async function updateAdminUser(id: string, request: UpdateUserRequest): Promise<AdminUser> {
-  return (await http.put<AdminUser>(`/admin/users/${id}`, request)).data
+  return requireApiData(await http.put<ApiResponse<AdminUser>>(`/admin/users/${id}`, request))
 }
 
 export async function deleteAdminUser(id: string): Promise<void> {

@@ -9,18 +9,22 @@ export const roles = {
 export type Role = (typeof roles)[keyof typeof roles]
 
 export interface CurrentUser {
-  isAuthenticated: boolean
-  id: string | null
-  account: string | null
+  id: string
+  account: string
   displayName: string | null
   email: string | null
   roles: Role[]
 }
 
+export interface AuthResponse {
+  accessToken: string
+  expiresAt: string
+  user: CurrentUser
+}
+
 export interface LoginRequest {
   account: string
   password: string
-  rememberMe: boolean
 }
 
 export interface RegisterRequest {

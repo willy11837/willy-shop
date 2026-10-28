@@ -9,7 +9,7 @@ const cart = useCartStore(); const router = useRouter(); const error = ref(''); 
 onMounted(cart.load)
 async function submit(): Promise<void> {
   submitting.value = true; error.value = ''
-  try { const order = await checkout(); await cart.load(); await router.push({ name: 'orders', query: { created: order.id } }) }
+  try { const order = await checkout(); await cart.load(); await router.push({ name: 'checkout-complete', params: { orderId: order.id } }) }
   catch (reason) { error.value = errorMessage(reason) }
   finally { submitting.value = false }
 }

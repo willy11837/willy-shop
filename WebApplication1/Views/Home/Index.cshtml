@@ -1,0 +1,56 @@
+﻿@{
+    ViewData["Title"] = "舒適拖鞋館 - 官方商城";
+}
+
+<div class="py-5 bg-light text-dark">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h1 class="display-4 fw-bold">舒適拖鞋館</h1>
+                <p class="lead">用心挑選，每一步都舒適 — 官方直營網站</p>
+                <p class="mt-4">
+                    <a class="btn btn-primary btn-lg me-2" asp-page="/Products/Index">商品目錄</a>
+                </p>
+            </div>
+            <div class="col-md-6 d-none d-md-block">
+                <img src="~/images/hero-slippers.png" alt="舒適拖鞋" class="img-fluid rounded shadow" style="max-height:300px; object-fit:contain;" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@* 產品區塊：熱門商品（取前三項） *@
+@{
+    var db = Context.RequestServices.GetService(typeof(WebApplication1.Data.ApplicationDbContext)) as WebApplication1.Data.ApplicationDbContext;
+    var products = db?.Products.OrderByDescending(p => p.CreatedAt).Take(6).ToList() ?? new System.Collections.Generic.List<WebApplication1.Models.Product>();
+}
+
+<div class="container my-5">
+    <h2 class="mb-4">熱門商品</h2>
+    @if (products.Count == 0)
+    {
+        <p>目前沒有商品。</p>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var p in products)
+            {
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        <img src="@Url.Content(p.ImagePath ?? "~/images/slipper1.svg")" class="card-img-top" style="height:220px; object-fit:contain;" alt="@p.Name" />
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title">@p.Name</h5>
+                            <p class="card-text text-muted">代碼：@p.ProductCode</p>
+                            <p class="card-text fs-5 fw-bold">@p.Price.ToString("C")</p>
+                            <div class="mt-auto">
+                                <a asp-page="/Products/Details" asp-route-code="@p.ProductCode" class="btn btn-sm btn-outline-primary">檢視</a>
+                                <button type="button" class="btn btn-sm btn-success ms-2 js-add-cart" data-code="@p.ProductCode">加入購物車</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>

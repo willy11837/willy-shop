@@ -5,27 +5,28 @@ using Microsoft.AspNetCore.Mvc;
 using WillyShop.Contracts;
 using WillyShop.Models;
 using WillyShop.Services;
+using WillyShop.Services.Auth;
 
 namespace WillyShop.Controllers.Api.V1;
 
 [ApiController]
 [Route("api/v1/auth")]
-public sealed class AuthController : ControllerBase
+public sealed class AuthController : ApiControllerBase
 {
-    private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly CartService _cartService;
+    private readonly ITokenService _tokenService;
     private readonly IAntiforgery _antiforgery;
 
     public AuthController(
-        SignInManager<ApplicationUser> signInManager,
         UserManager<ApplicationUser> userManager,
         CartService cartService,
+        ITokenService tokenService,
         IAntiforgery antiforgery)
     {
-        _signInManager = signInManager;
         _userManager = userManager;
         _cartService = cartService;
+        _tokenService = tokenService;
         _antiforgery = antiforgery;
     }
 
@@ -34,54 +35,51 @@ public sealed class AuthController : ControllerBase
     public ActionResult<object> GetCsrfToken()
     {
         var tokens = _antiforgery.GetAndStoreTokens(HttpContext);
-        return Ok(new { token = tokens.RequestToken });
+        return ApiSuccess(new { token = tokens.RequestToken });
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpGet("me")]
     public async Task<ActionResult<CurrentUserDto>> Me()
     {
         var user = await _userManager.GetUserAsync(User);
-        if (user is null)
-            return Ok(new CurrentUserDto(false, null, null, null, null, [SystemRoles.Guest]));
-        return Ok(await MapUserAsync(user));
+        return user is null
+            ? ApiFailure("需要有效的登入憑證。", StatusCodes.Status401Unauthorized)
+            : ApiSuccess(await MapUserAsync(user));
     }
 
     [AllowAnonymous]
-    [ValidateAntiForgeryToken]
     [HttpPost("login")]
-    public async Task<ActionResult<CurrentUserDto>> Login(LoginRequest request)
+    public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken cancellationToken)
     {
         var account = request.Account.Trim();
-        var result = await _signInManager.PasswordSignInAsync(account, request.Password, request.RememberMe, lockoutOnFailure: true);
-        if (!result.Succeeded)
+        var user = await _userManager.FindByNameAsync(account);
+        if (user is null || await _userManager.IsLockedOutAsync(user))
+            return LoginFailed();
+
+        if (!await _userManager.CheckPasswordAsync(user, request.Password))
         {
-            var message = result.IsLockedOut ? "帳號已暫時鎖定，請稍後再試。" : "登入失敗，帳號或密碼錯誤。";
-            return Unauthorized(new ProblemDetails { Title = "登入失敗", Detail = message, Status = StatusCodes.Status401Unauthorized });
+            await _userManager.AccessFailedAsync(user);
+            return LoginFailed();
         }
 
-        var user = await _userManager.FindByNameAsync(account);
-        if (user is null) return Unauthorized();
-        var anonymousCart = _cartService.GetAnonymousCart(HttpContext);
-        if (anonymousCart.Count > 0)
-        {
-            await _cartService.MergeAnonymousCartToUserAsync(user.Id, anonymousCart);
-            _cartService.ClearAnonymousCart(HttpContext);
-        }
-        return Ok(await MapUserAsync(user));
+        await _userManager.ResetAccessFailedCountAsync(user);
+        await MergeAnonymousCartAsync(user, cancellationToken);
+        var response = await _tokenService.IssueAsync(user, GetIpAddress(), cancellationToken);
+        _tokenService.WriteRefreshTokenCookie(Response, response.RefreshToken, response.RefreshTokenExpiresAt);
+        return ApiSuccess(response, "登入成功。");
     }
 
     [AllowAnonymous]
-    [ValidateAntiForgeryToken]
     [HttpPost("register")]
-    public async Task<ActionResult<CurrentUserDto>> Register(RegisterRequest request)
+    public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
         var account = request.Account.Trim();
         var email = request.Email.Trim();
         if (await _userManager.FindByNameAsync(account) is not null)
-            return Conflict(new ProblemDetails { Title = "註冊失敗", Detail = "此使用者帳號已被使用。", Status = StatusCodes.Status409Conflict });
+            return ApiFailure("此使用者帳號已被使用。", StatusCodes.Status409Conflict);
         if (await _userManager.FindByEmailAsync(email) is not null)
-            return Conflict(new ProblemDetails { Title = "註冊失敗", Detail = "此電子郵件已註冊。", Status = StatusCodes.Status409Conflict });
+            return ApiFailure("此電子郵件已註冊。", StatusCodes.Status409Conflict);
 
         var user = new ApplicationUser
         {
@@ -91,37 +89,73 @@ public sealed class AuthController : ControllerBase
             CreatedAt = DateTime.UtcNow
         };
         var result = await _userManager.CreateAsync(user, request.Password);
-        if (!result.Succeeded)
-            return BadRequest(new ValidationProblemDetails(result.Errors.GroupBy(error => error.Code).ToDictionary(group => group.Key, group => group.Select(error => error.Description).ToArray())));
+        if (!result.Succeeded) return IdentityErrors(result);
 
         var roleResult = await _userManager.AddToRoleAsync(user, SystemRoles.Normal);
         if (!roleResult.Succeeded)
         {
             await _userManager.DeleteAsync(user);
-            return BadRequest(new ProblemDetails { Title = "註冊失敗", Detail = "建立預設權限失敗。" });
+            return IdentityErrors(roleResult);
         }
-        await _signInManager.SignInAsync(user, isPersistent: false);
-        var anonymousCart = _cartService.GetAnonymousCart(HttpContext);
-        if (anonymousCart.Count > 0)
-        {
-            await _cartService.MergeAnonymousCartToUserAsync(user.Id, anonymousCart);
-            _cartService.ClearAnonymousCart(HttpContext);
-        }
-        return Ok(await MapUserAsync(user));
+
+        await MergeAnonymousCartAsync(user, cancellationToken);
+        var response = await _tokenService.IssueAsync(user, GetIpAddress(), cancellationToken);
+        _tokenService.WriteRefreshTokenCookie(Response, response.RefreshToken, response.RefreshTokenExpiresAt);
+        return ApiSuccess(response, "註冊成功。", StatusCodes.Status201Created);
     }
 
-    [Authorize]
-    [ValidateAntiForgeryToken]
-    [HttpPost("logout")]
-    public async Task<IActionResult> Logout()
+    [AllowAnonymous]
+    [HttpPost("refresh")]
+    public async Task<ActionResult<AuthResponse>> Refresh(CancellationToken cancellationToken)
     {
-        await _signInManager.SignOutAsync();
-        return NoContent();
+        if (!Request.Cookies.TryGetValue(TokenService.RefreshTokenCookieName, out var refreshToken)
+            || string.IsNullOrWhiteSpace(refreshToken))
+            return ApiFailure("Refresh Token 無效或已過期。", StatusCodes.Status401Unauthorized);
+
+        var response = await _tokenService.RotateAsync(refreshToken, GetIpAddress(), cancellationToken);
+        if (response is null)
+        {
+            _tokenService.DeleteRefreshTokenCookie(Response);
+            return ApiFailure("Refresh Token 無效或已過期。", StatusCodes.Status401Unauthorized);
+        }
+
+        _tokenService.WriteRefreshTokenCookie(Response, response.RefreshToken, response.RefreshTokenExpiresAt);
+        return ApiSuccess(response, "存取權杖更新成功。");
+    }
+
+    [AllowAnonymous]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        if (Request.Cookies.TryGetValue(TokenService.RefreshTokenCookieName, out var refreshToken)
+            && !string.IsNullOrWhiteSpace(refreshToken))
+            await _tokenService.RevokeAsync(refreshToken, GetIpAddress(), "使用者登出。", cancellationToken);
+
+        _tokenService.DeleteRefreshTokenCookie(Response);
+        return ApiSuccess<object?>(null, "登出成功。");
+    }
+
+    private async Task MergeAnonymousCartAsync(ApplicationUser user, CancellationToken cancellationToken)
+    {
+        var anonymousCart = _cartService.GetAnonymousCart(HttpContext);
+        if (anonymousCart.Count == 0) return;
+
+        await _cartService.MergeAnonymousCartToUserAsync(user.Id, anonymousCart, cancellationToken);
+        _cartService.ClearAnonymousCart(HttpContext);
     }
 
     private async Task<CurrentUserDto> MapUserAsync(ApplicationUser user)
     {
         var roles = await _userManager.GetRolesAsync(user);
-        return new CurrentUserDto(true, user.Id, user.UserName, user.DisplayName, user.Email, roles.ToList());
+        return new CurrentUserDto(user.Id, user.UserName ?? string.Empty, user.DisplayName, user.Email, roles.ToList());
     }
+
+    private ActionResult LoginFailed() => ApiFailure("登入失敗，帳號或密碼錯誤。", StatusCodes.Status401Unauthorized);
+
+    private ObjectResult IdentityErrors(IdentityResult result) => ApiValidationFailure(
+        result.Errors.GroupBy(error => error.Code).ToDictionary(
+            group => group.Key,
+            group => group.Select(error => error.Description).ToArray()));
+
+    private string? GetIpAddress() => HttpContext.Connection.RemoteIpAddress?.ToString();
 }

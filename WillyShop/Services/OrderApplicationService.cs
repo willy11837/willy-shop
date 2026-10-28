@@ -33,7 +33,7 @@ public sealed class OrderApplicationService
         var order = new Order
         {
             UserId = userId,
-            TotalAmount = cart.Sum(item => products[item.ProductCode].Price * item.Quantity),
+            TotalAmount = cart.Sum(item => products[item.ProductCode].EffectivePrice * item.Quantity),
             CreatedAt = DateTime.UtcNow,
             Status = "Pending"
         };
@@ -43,6 +43,7 @@ public sealed class OrderApplicationService
         var orderItems = cart.Select(item =>
         {
             var product = products[item.ProductCode];
+            var unitPrice = product.EffectivePrice;
             product.StockQuantity -= item.Quantity;
             if (product.StockQuantity == 0) product.Status = ProductStatus.數量不足;
             product.ModifiedAt = DateTime.UtcNow;
@@ -52,9 +53,9 @@ public sealed class OrderApplicationService
                 OrderId = order.Id,
                 ProductCode = item.ProductCode,
                 ProductName = product.Name,
-                UnitPrice = product.Price,
+                UnitPrice = unitPrice,
                 Quantity = item.Quantity,
-                Subtotal = product.Price * item.Quantity
+                Subtotal = unitPrice * item.Quantity
             };
         }).ToList();
 

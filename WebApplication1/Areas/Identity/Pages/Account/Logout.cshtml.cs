@@ -1,0 +1,30 @@
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Logging;
+
+namespace WebApplication1.Areas.Identity.Pages.Account
+{
+    [AllowAnonymous]
+    public class LogoutModel : PageModel
+    {
+        private readonly SignInManager<WebApplication1.Models.ApplicationUser> _signInManager;
+        private readonly ILogger<LogoutModel> _logger;
+
+        public LogoutModel(SignInManager<WebApplication1.Models.ApplicationUser> signInManager, ILogger<LogoutModel> logger)
+        {
+            _signInManager = signInManager;
+            _logger = logger;
+        }
+
+        // 中文註解：處理登出 POST 請求，登出後導回首頁。
+        public async Task<IActionResult> OnPostAsync()
+        {
+            await _signInManager.SignOutAsync();
+            _logger.LogInformation("User logged out.");
+            return RedirectToPage("/Index");
+        }
+    }
+}

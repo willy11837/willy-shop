@@ -7,22 +7,22 @@ import type { LoginRequest, RegisterRequest, Role, CurrentUser } from '@/types/a
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<CurrentUser | null>(null)
   const initialized = ref(false)
-  const isAuthenticated = computed(() => user.value?.isAuthenticated === true)
+  const isAuthenticated = computed(() => user.value !== null)
 
   async function initialize(): Promise<void> {
     if (initialized.value) return
-    try { user.value = await authApi.getCurrentUser() }
+    try { user.value = (await authApi.restoreSession()).user }
     catch { user.value = null }
     finally { initialized.value = true }
   }
 
   async function login(request: LoginRequest): Promise<void> {
-    user.value = await authApi.login(request)
+    user.value = (await authApi.login(request)).user
     initialized.value = true
   }
 
   async function register(request: RegisterRequest): Promise<void> {
-    user.value = await authApi.register(request)
+    user.value = (await authApi.register(request)).user
     initialized.value = true
   }
 
@@ -32,9 +32,13 @@ export const useAuthStore = defineStore('auth', () => {
     initialized.value = true
   }
 
+  async function reloadUser(): Promise<void> {
+    user.value = await authApi.getCurrentUser()
+  }
+
   function hasAnyRole(required: Role[]): boolean {
     return required.some((role) => user.value?.roles.includes(role))
   }
 
-  return { user, initialized, isAuthenticated, initialize, login, register, logout, hasAnyRole }
+  return { user, initialized, isAuthenticated, initialize, login, register, logout, reloadUser, hasAnyRole }
 })

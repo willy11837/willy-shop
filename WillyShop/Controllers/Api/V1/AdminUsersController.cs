@@ -10,7 +10,7 @@ namespace WillyShop.Controllers.Api.V1;
 [ApiController]
 [Authorize(Roles = SystemRoles.AccountManagers)]
 [Route("api/v1/admin/users")]
-public sealed class AdminUsersController : ControllerBase
+public sealed class AdminUsersController : ApiControllerBase
 {
     private readonly UserManager<ApplicationUser> _userManager;
 
@@ -23,21 +23,19 @@ public sealed class AdminUsersController : ControllerBase
         var result = new List<AdminUserDto>();
         foreach (var user in users)
             result.Add(await MapAsync(user));
-        return Ok(result);
+        return ApiSuccess(result);
     }
 
     [HttpGet("roles")]
-    public ActionResult<IReadOnlyList<string>> GetRoles() => Ok(AvailableRoles());
-
-    [ValidateAntiForgeryToken]
+    public ActionResult<IReadOnlyList<string>> GetRoles() => ApiSuccess(AvailableRoles());
     [HttpPost]
     public async Task<ActionResult<AdminUserDto>> Create(CreateUserRequest request)
     {
-        if (!AvailableRoles().Contains(request.Role)) return Forbid();
+        if (!AvailableRoles().Contains(request.Role)) return ApiFailure("目前帳號無法指派此角色。", StatusCodes.Status403Forbidden);
         if (await _userManager.FindByNameAsync(request.Account.Trim()) is not null)
-            return Conflict(Problem("帳號已存在。", statusCode: 409));
+            return ApiFailure("帳號已存在。", StatusCodes.Status409Conflict);
         if (await _userManager.FindByEmailAsync(request.Email.Trim()) is not null)
-            return Conflict(Problem("Email 已存在。", statusCode: 409));
+            return ApiFailure("Email 已存在。", StatusCodes.Status409Conflict);
 
         var user = new ApplicationUser
         {
@@ -56,22 +54,21 @@ public sealed class AdminUsersController : ControllerBase
             await _userManager.DeleteAsync(user);
             return IdentityErrors(roleResult);
         }
-        return Ok(await MapAsync(user));
+        return ApiSuccess(await MapAsync(user), "使用者建立成功。", StatusCodes.Status201Created);
     }
-
-    [ValidateAntiForgeryToken]
     [HttpPut("{id}")]
     public async Task<ActionResult<AdminUserDto>> Update(string id, UpdateUserRequest request)
     {
-        if (!AvailableRoles().Contains(request.Role)) return Forbid();
+        if (!AvailableRoles().Contains(request.Role)) return ApiFailure("目前帳號無法指派此角色。", StatusCodes.Status403Forbidden);
         var user = await _userManager.FindByIdAsync(id);
-        if (user is null) return NotFound();
+        if (user is null) return ApiFailure("找不到指定的使用者。", StatusCodes.Status404NotFound);
         var oldRoles = await _userManager.GetRolesAsync(user);
-        if (!User.IsInRole(SystemRoles.System) && oldRoles.Contains(SystemRoles.System)) return Forbid();
+        if (!User.IsInRole(SystemRoles.System) && oldRoles.Contains(SystemRoles.System))
+            return ApiFailure("目前帳號無法修改 System 使用者。", StatusCodes.Status403Forbidden);
         if (oldRoles.Contains(SystemRoles.System) && request.Role != SystemRoles.System && (await _userManager.GetUsersInRoleAsync(SystemRoles.System)).Count <= 1)
-            return BadRequest(Problem("不可變更最後一個 System 帳號的權限。", statusCode: 400));
+            return ApiFailure("不可移除最後一個 System 帳號的系統角色。", StatusCodes.Status400BadRequest);
         var emailOwner = await _userManager.FindByEmailAsync(request.Email.Trim());
-        if (emailOwner is not null && emailOwner.Id != id) return Conflict(Problem("Email 已被使用。", statusCode: 409));
+        if (emailOwner is not null && emailOwner.Id != id) return ApiFailure("Email 已被使用。", StatusCodes.Status409Conflict);
 
         user.DisplayName = request.DisplayName.Trim();
         user.Email = request.Email.Trim();
@@ -88,22 +85,21 @@ public sealed class AdminUsersController : ControllerBase
         if (oldRoles.Count > 0) await _userManager.RemoveFromRolesAsync(user, oldRoles);
         var roleResult = await _userManager.AddToRoleAsync(user, request.Role);
         if (!roleResult.Succeeded) return IdentityErrors(roleResult);
-        return Ok(await MapAsync(user));
+        return ApiSuccess(await MapAsync(user), "使用者更新成功。");
     }
 
     [Authorize(Roles = SystemRoles.System)]
-    [ValidateAntiForgeryToken]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
         var current = await _userManager.GetUserAsync(User);
-        if (current?.Id == id) return BadRequest(Problem("不可刪除目前登入的帳號。", statusCode: 400));
+        if (current?.Id == id) return ApiFailure("不可刪除目前登入的帳號。", StatusCodes.Status400BadRequest);
         var user = await _userManager.FindByIdAsync(id);
-        if (user is null) return NotFound();
+        if (user is null) return ApiFailure("找不到指定的使用者。", StatusCodes.Status404NotFound);
         if (await _userManager.IsInRoleAsync(user, SystemRoles.System) && (await _userManager.GetUsersInRoleAsync(SystemRoles.System)).Count <= 1)
-            return BadRequest(Problem("不可刪除最後一個 System 帳號。", statusCode: 400));
+            return ApiFailure("不可刪除最後一個 System 帳號。", StatusCodes.Status400BadRequest);
         var result = await _userManager.DeleteAsync(user);
-        return result.Succeeded ? NoContent() : IdentityErrors(result);
+        return result.Succeeded ? ApiSuccess<object?>(null, "使用者刪除成功。") : IdentityErrors(result);
     }
 
     private List<string> AvailableRoles() => User.IsInRole(SystemRoles.System)
@@ -117,6 +113,8 @@ public sealed class AdminUsersController : ControllerBase
             user.CreatedAt, user.ModifiedBy, user.ModifiedAt);
     }
 
-    private ActionResult IdentityErrors(IdentityResult result) => BadRequest(new ValidationProblemDetails(
-        result.Errors.GroupBy(error => error.Code).ToDictionary(group => group.Key, group => group.Select(error => error.Description).ToArray())));
+    private ActionResult IdentityErrors(IdentityResult result) => ApiValidationFailure(
+        result.Errors.GroupBy(error => error.Code).ToDictionary(
+            group => group.Key,
+            group => group.Select(error => error.Description).ToArray()));
 }

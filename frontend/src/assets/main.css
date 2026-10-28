@@ -19,7 +19,11 @@ a { color: inherit; text-decoration: none; }
 .product-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 .product-card { display: flex; flex-direction: column; gap: 12px; }
 .product-image { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: #edf0f4; }
-.price { color: #b42318; font-size: 1.25rem; font-weight: 800; }
+.price { color: #253044; font-size: 1.25rem; font-weight: 800; }
+.sale-price { color: #b42318; }
+.price-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.original-price { color: #667085; text-decoration: line-through; }
+.price-status { display: inline-flex; padding: 3px 8px; border-radius: 999px; color: #7a271a; background: #ffebe8; font-size: .8rem; font-weight: 700; }
 .muted { color: #667085; }
 .form-grid { display: grid; gap: 16px; }
 .form-row { display: grid; gap: 6px; }

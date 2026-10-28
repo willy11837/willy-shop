@@ -8,20 +8,10 @@ $backendLog = Join-Path $root 'integration-test-backend.log'
 $backendErrorLog = Join-Path $root 'integration-test-backend.err.log'
 $frontendLog = Join-Path $root 'integration-test-frontend.log'
 $frontendErrorLog = Join-Path $root 'integration-test-frontend.err.log'
-$adminPassword = $env:SMOKE_ADMIN_PASSWORD
-$systemPassword = $env:SMOKE_SYSTEM_PASSWORD
-
-if ([string]::IsNullOrWhiteSpace($adminPassword)) {
-    throw 'SMOKE_ADMIN_PASSWORD must be set to the development Admin account password before running integration tests.'
-}
-if ([string]::IsNullOrWhiteSpace($systemPassword)) {
-    throw 'SMOKE_SYSTEM_PASSWORD must be set to the development System account password before running integration tests.'
-}
-
-$previousSeedAdminPassword = $env:SeedUsers__AdminPassword
-$previousSeedSystemPassword = $env:SeedUsers__SystemPassword
-$env:SeedUsers__AdminPassword = $adminPassword
-$env:SeedUsers__SystemPassword = $systemPassword
+$previousJwtSigningKey = $env:Jwt__SigningKey
+$previousProxyTarget = $env:VITE_DEV_PROXY_TARGET
+$env:Jwt__SigningKey = 'integration-only-willy-shop-jwt-signing-key-2026'
+$env:VITE_DEV_PROXY_TARGET = 'http://localhost:5151'
 
 $backend = $null
 $frontend = $null
@@ -56,27 +46,27 @@ try {
         -PassThru -RedirectStandardOutput $backendLog -RedirectStandardError $backendErrorLog
     Wait-ForUrl 'http://localhost:5151/api/v1/products'
 
-    $frontend = Start-Process cmd.exe -ArgumentList @('/d', '/c', 'npm run dev -- --host localhost') `
+    $frontend = Start-Process cmd.exe -ArgumentList @('/d', '/c', 'npm run dev -- --host localhost --port 5174') `
         -WorkingDirectory $frontendDirectory -PassThru -RedirectStandardOutput $frontendLog -RedirectStandardError $frontendErrorLog
-    Wait-ForUrl 'http://localhost:5173/api/v1/products'
+    Wait-ForUrl 'http://localhost:5174/api/v1/products'
 
-    $env:SMOKE_BASE_URL = 'http://localhost:5173'
+    $env:SMOKE_BASE_URL = 'http://localhost:5174'
     dotnet run --project $testProject --no-build
     if ($LASTEXITCODE -ne 0) { throw "Integration tests failed with exit code $LASTEXITCODE." }
 }
 finally {
     Remove-Item Env:SMOKE_BASE_URL -ErrorAction SilentlyContinue
-    if ($null -eq $previousSeedAdminPassword) {
-        Remove-Item Env:SeedUsers__AdminPassword -ErrorAction SilentlyContinue
+    if ($null -eq $previousJwtSigningKey) {
+        Remove-Item Env:Jwt__SigningKey -ErrorAction SilentlyContinue
     }
     else {
-        $env:SeedUsers__AdminPassword = $previousSeedAdminPassword
+        $env:Jwt__SigningKey = $previousJwtSigningKey
     }
-    if ($null -eq $previousSeedSystemPassword) {
-        Remove-Item Env:SeedUsers__SystemPassword -ErrorAction SilentlyContinue
+    if ($null -eq $previousProxyTarget) {
+        Remove-Item Env:VITE_DEV_PROXY_TARGET -ErrorAction SilentlyContinue
     }
     else {
-        $env:SeedUsers__SystemPassword = $previousSeedSystemPassword
+        $env:VITE_DEV_PROXY_TARGET = $previousProxyTarget
     }
     if ($frontend -and -not $frontend.HasExited) {
         & taskkill.exe /PID $frontend.Id /T /F | Out-Null

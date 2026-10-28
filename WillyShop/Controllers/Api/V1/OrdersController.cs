@@ -10,7 +10,7 @@ namespace WillyShop.Controllers.Api.V1;
 [ApiController]
 [Authorize]
 [Route("api/v1/orders")]
-public sealed class OrdersController : ControllerBase
+public sealed class OrdersController : ApiControllerBase
 {
     private readonly OrderApplicationService _orders;
 
@@ -20,7 +20,7 @@ public sealed class OrdersController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<OrderDto>>> GetAll()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
-        return Ok(await _orders.GetOrdersAsync(userId));
+        return ApiSuccess(await _orders.GetOrdersAsync(userId));
     }
 
     [HttpGet("{orderId:int}")]
@@ -29,20 +29,20 @@ public sealed class OrdersController : ControllerBase
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
         var canManage = User.IsInRole(SystemRoles.System) || User.IsInRole(SystemRoles.Admin);
         var order = await _orders.GetOrderAsync(orderId, userId, canManage);
-        return order is null ? NotFound() : Ok(order);
+        return order is null
+            ? ApiFailure("找不到指定的訂單。", StatusCodes.Status404NotFound)
+            : ApiSuccess(order);
     }
-
-    [ValidateAntiForgeryToken]
     [HttpPost("checkout")]
     public async Task<ActionResult<OrderDto>> Checkout()
     {
         try
         {
-            return Ok(await _orders.CheckoutAsync(User.FindFirstValue(ClaimTypes.NameIdentifier)!));
+            return ApiSuccess(await _orders.CheckoutAsync(User.FindFirstValue(ClaimTypes.NameIdentifier)!), "訂單建立成功。");
         }
         catch (InvalidOperationException exception)
         {
-            return BadRequest(Problem(exception.Message, statusCode: 400));
+            return ApiFailure(exception.Message, StatusCodes.Status400BadRequest);
         }
     }
 }

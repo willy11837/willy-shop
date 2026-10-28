@@ -1,0 +1,6 @@
+@page "{code?}"
+@model WebApplication1.Pages.Admin.Products.DeleteModel
+@{ ViewData["Title"] = "刪除商品"; }
+<h1>刪除商品</h1>
+<div class="alert alert-warning">確定要刪除商品「@Model.Product.Name（@Model.Product.ProductCode）」嗎？</div>
+<form method="post"><input type="hidden" asp-for="Product.ProductCode" /><button type="submit" class="btn btn-danger">確認刪除</button> <a asp-page="./Index" class="btn btn-secondary">取消</a></form>

@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WillyShop.Contracts;
-using WillyShop.Data;
 using WillyShop.Models;
 using WillyShop.Services;
 
@@ -9,48 +8,58 @@ namespace WillyShop.Controllers.Api.V1;
 
 [ApiController]
 [Route("api/v1/products")]
-public sealed class ProductsController : ControllerBase
+public sealed class ProductsController : ApiControllerBase
 {
-    private readonly ApplicationDbContext _db;
+    private readonly ProductQueryService _products;
+    private readonly WillyShop.Data.ApplicationDbContext _db;
 
-    public ProductsController(ApplicationDbContext db) => _db = db;
+    public ProductsController(ProductQueryService products, WillyShop.Data.ApplicationDbContext db)
+    {
+        _products = products;
+        _db = db;
+    }
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<ProductDto>>> GetAll([FromQuery] string? search, [FromQuery] string? category)
+    public async Task<ActionResult<PagedResult<ProductDto>>> GetAll(
+        [FromQuery] ProductQuery query,
+        CancellationToken cancellationToken)
     {
-        var query = _db.Products.AsNoTracking().Where(product => product.Status == ProductStatus.可銷售 && product.StockQuantity > 0);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var value = search.Trim();
-            query = query.Where(product => product.ProductCode.Contains(value) || product.Name.Contains(value));
-        }
-        if (!string.IsNullOrWhiteSpace(category))
-        {
-            var value = category.Trim();
-            query = query.Where(product => product.Category == value);
-        }
+        if (query.ModifiedFrom > query.ModifiedTo)
+            ModelState.AddModelError(nameof(query.ModifiedTo), "修改迄日不得早於修改起日。");
+        if (!ModelState.IsValid)
+            return ApiValidationFailure(ModelState
+                .Where(entry => entry.Value?.Errors.Count > 0)
+                .ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value!.Errors.Select(error => error.ErrorMessage).ToArray()));
 
-        var products = await query.OrderBy(product => product.ProductCode).Take(100).ToListAsync();
-        return Ok(products.Select(Map).ToList());
+        return ApiSuccess(await _products.SearchAsync(query, cancellationToken));
     }
 
     [HttpGet("{productCode}")]
-    public async Task<ActionResult<ProductDto>> GetByCode(string productCode)
+    public async Task<ActionResult<ProductDto>> GetByCode(
+        string productCode,
+        CancellationToken cancellationToken)
     {
-        var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(value => value.ProductCode == productCode);
-        return product is null ? NotFound() : Ok(Map(product));
+        var product = await _db.Products.AsNoTracking()
+            .FirstOrDefaultAsync(value => value.ProductCode == productCode, cancellationToken);
+        return product is null
+            ? ApiFailure("找不到指定的商品。", StatusCodes.Status404NotFound)
+            : ApiSuccess(ProductMappings.ToDto(product));
     }
 
-    private static ProductDto Map(Product product) => new(
-        product.ProductCode,
-        product.Name,
-        product.Price,
-        product.Category,
-        product.StockQuantity,
-        product.Status,
-        product.Status.ToString(),
-        CartApplicationService.NormalizeImageUrl(product.ImagePath),
-        product.CreatedAt,
-        product.ModifiedBy,
-        product.ModifiedAt);
+    [HttpGet("on-sale")]
+    public async Task<ActionResult<IReadOnlyList<ProductDto>>> GetOnSale(CancellationToken cancellationToken)
+    {
+        var products = await _db.Products.AsNoTracking()
+            .Where(product => product.Status == ProductStatus.可銷售
+                && product.StockQuantity > 0
+                && product.IsOnSale
+                && product.SalePrice.HasValue)
+            .OrderBy(product => product.ProductCode)
+            .Take(100)
+            .ToListAsync(cancellationToken);
+
+        return ApiSuccess<IReadOnlyList<ProductDto>>(products.Select(ProductMappings.ToDto).ToList());
+    }
 }

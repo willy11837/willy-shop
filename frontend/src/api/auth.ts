@@ -1,23 +1,31 @@
-import { clearCsrfToken, http } from './http'
-import type { CurrentUser, LoginRequest, RegisterRequest } from '@/types/auth'
+import { clearCsrfToken, http, refreshAccessToken, requireApiData, setAccessToken } from './http'
+import type { ApiResponse } from '@/types/api'
+import type { AuthResponse, CurrentUser, LoginRequest, RegisterRequest } from '@/types/auth'
+
+export async function restoreSession(): Promise<AuthResponse> {
+  return await refreshAccessToken()
+}
 
 export async function getCurrentUser(): Promise<CurrentUser> {
-  return (await http.get<CurrentUser>('/auth/me')).data
+  return requireApiData(await http.get<ApiResponse<CurrentUser>>('/auth/me'))
 }
 
-export async function login(request: LoginRequest): Promise<CurrentUser> {
-  const user = (await http.post<CurrentUser>('/auth/login', request)).data
+export async function login(request: LoginRequest): Promise<AuthResponse> {
+  const response = requireApiData(await http.post<ApiResponse<AuthResponse>>('/auth/login', request))
+  setAccessToken(response.accessToken)
   clearCsrfToken()
-  return user
+  return response
 }
 
-export async function register(request: RegisterRequest): Promise<CurrentUser> {
-  const user = (await http.post<CurrentUser>('/auth/register', request)).data
+export async function register(request: RegisterRequest): Promise<AuthResponse> {
+  const response = requireApiData(await http.post<ApiResponse<AuthResponse>>('/auth/register', request))
+  setAccessToken(response.accessToken)
   clearCsrfToken()
-  return user
+  return response
 }
 
 export async function logout(): Promise<void> {
   await http.post('/auth/logout')
+  setAccessToken(null)
   clearCsrfToken()
 }

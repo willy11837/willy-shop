@@ -1,0 +1,140 @@
+@page
+@model WebApplication1.Areas.Identity.Pages.Account.RegisterModel
+@using System.Text.Json
+@{
+	ViewData["Title"] = "註冊";
+}
+
+@* 上方切換標籤：Login / Register *@
+<ul class="nav nav-tabs mb-3">
+	<li class="nav-item">
+		@{ var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? string.Empty; }
+		<a class="nav-link @(currentPage.EndsWith("Login") ? "active" : "")" href="@Url.Page("/Account/Login", new { area = "Identity" })">登入</a>
+	</li>
+	<li class="nav-item">
+		<a class="nav-link @(currentPage.EndsWith("Register") ? "active" : "")" href="@Url.Page("/Account/Register", new { area = "Identity" })">註冊</a>
+	</li>
+</ul>
+
+<h1>註冊</h1>
+<p class="text-muted">註冊成功後會自動前往登入頁，新會員預設為 Normal 權限。</p>
+
+@* 顯示錯誤訊息與驗證摘要 *@
+<div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+<form method="post" novalidate>
+	@Html.AntiForgeryToken()
+	<div class="mb-3">
+		<label asp-for="Input.Account" class="form-label">使用者帳號</label>
+		<input asp-for="Input.Account" class="form-control" autocomplete="username" />
+		<span asp-validation-for="Input.Account" class="text-danger"></span>
+	</div>
+	<div class="mb-3">
+		<label asp-for="Input.UserName" class="form-label">顯示名稱</label>
+		<input asp-for="Input.UserName" class="form-control" autocomplete="name" />
+		<span asp-validation-for="Input.UserName" class="text-danger"></span>
+	</div>
+	<div class="mb-3">
+		<label asp-for="Input.Email" class="form-label">電子郵件</label>
+		<input asp-for="Input.Email" class="form-control" autocomplete="email" />
+		<span asp-validation-for="Input.Email" class="text-danger"></span>
+	</div>
+	<div class="mb-3">
+		<label asp-for="Input.Password" class="form-label">密碼</label>
+		<input asp-for="Input.Password" class="form-control" autocomplete="new-password" />
+		<div class="form-text">至少 8 個字元，並包含大寫字母、小寫字母及數字。</div>
+		<span asp-validation-for="Input.Password" class="text-danger"></span>
+	</div>
+	<div class="mb-3">
+		<label asp-for="Input.ConfirmPassword" class="form-label">確認密碼</label>
+		<input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" />
+		<span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
+	</div>
+	<button type="submit" class="btn btn-primary">註冊</button>
+	<input type="hidden" asp-for="ReturnUrl" />
+</form>
+
+@* 註冊結果 modal *@
+@if (Model.ShowResultModal)
+{
+	<div class="modal fade" id="registerResultModal" tabindex="-1" aria-labelledby="registerResultModalLabel" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header @(Model.RegistrationSucceeded ? "bg-success text-white" : "bg-danger text-white")">
+					<h5 class="modal-title" id="registerResultModalLabel">@(Model.RegistrationSucceeded ? "註冊成功" : "註冊失敗")</h5>
+					@if (!Model.RegistrationSucceeded)
+					{
+						<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="關閉"></button>
+					}
+				</div>
+				<div class="modal-body">
+					<p style="white-space: pre-line">@Model.RegistrationMessage</p>
+					@if (Model.RegistrationSucceeded)
+					{
+						<p class="mb-0">將在 <strong id="registerCountdown">5</strong> 秒後前往登入頁。</p>
+					}
+				</div>
+				<div class="modal-footer">
+					@if (Model.RegistrationSucceeded)
+					{
+						<a href="@Model.LoginUrl" class="btn btn-success">立即前往登入</a>
+					}
+					else
+					{
+						<button type="button" class="btn btn-primary" data-bs-dismiss="modal">確認</button>
+					}
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
+@section Scripts {
+	<partial name="_ValidationScriptsPartial" />
+	@if (Model.ShowResultModal)
+	{
+		<script>
+			document.addEventListener('DOMContentLoaded', function () {
+				const modalElement = document.getElementById('registerResultModal');
+				if (!modalElement) {
+					return;
+				}
+
+				const resultModal = bootstrap.Modal.getOrCreateInstance(modalElement, {
+					backdrop: @(Model.RegistrationSucceeded ? "'static'" : "true"),
+					keyboard: @(Model.RegistrationSucceeded ? "false" : "true")
+				});
+				resultModal.show();
+
+				@if (Model.RegistrationSucceeded)
+				{
+					<text>
+					const redirectUrl = @Html.Raw(JsonSerializer.Serialize(Model.LoginUrl));
+					const countdownElement = document.getElementById('registerCountdown');
+					let secondsRemaining = 5;
+
+					const countdownTimer = window.setInterval(function () {
+						secondsRemaining -= 1;
+						if (countdownElement) {
+							countdownElement.textContent = secondsRemaining.toString();
+						}
+
+						if (secondsRemaining === 0) {
+							window.clearInterval(countdownTimer);
+							modalElement.addEventListener('hidden.bs.modal', function () {
+								window.location.href = redirectUrl;
+							}, { once: true });
+							resultModal.hide();
+
+							// 防止 Bootstrap 動畫事件未觸發而無法跳轉。
+							window.setTimeout(function () {
+								window.location.href = redirectUrl;
+							}, 500);
+						}
+					}, 1000);
+					</text>
+				}
+			});
+		</script>
+	}
+}

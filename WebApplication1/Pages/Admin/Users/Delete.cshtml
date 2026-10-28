@@ -1,0 +1,6 @@
+@page "{id?}"
+@model WebApplication1.Pages.Admin.Users.DeleteModel
+@{ ViewData["Title"] = "刪除帳號"; }
+<h1>刪除帳號</h1>
+<div class="alert alert-warning">確定要刪除帳號「@Model.Account（@Model.DisplayName）」嗎？</div>
+<form method="post"><input type="hidden" asp-for="Id" /><button class="btn btn-danger">確認刪除</button> <a asp-page="./Index" class="btn btn-secondary">取消</a></form>

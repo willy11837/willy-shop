@@ -65,14 +65,17 @@ namespace WillyShop.Services
 
         // 中文註解：將匿名購物車合併到指定使用者的資料庫購物車中，遇到相同商品則合併數量。
         // 參數：string userId - 目標使用者的 Id；List<CartItem> anonItems - 要合併的匿名購物車項目清單。
-        public async Task MergeAnonymousCartToUserAsync(string userId, List<CartItem> anonItems)
+        public async Task MergeAnonymousCartToUserAsync(
+            string userId,
+            List<CartItem> anonItems,
+            CancellationToken cancellationToken = default)
         {
             if (anonItems == null || anonItems.Count == 0) return;
 
             foreach (var anon in anonItems)
             {
                 var existing = await _db.UserCartItems
-                    .FirstOrDefaultAsync(x => x.UserId == userId && x.ProductCode == anon.ProductCode);
+                    .FirstOrDefaultAsync(x => x.UserId == userId && x.ProductCode == anon.ProductCode, cancellationToken);
                 if (existing != null)
                 {
                     existing.Quantity += anon.Quantity;
@@ -86,11 +89,11 @@ namespace WillyShop.Services
                         ProductCode = anon.ProductCode,
                         Quantity = anon.Quantity
                     };
-                    await _db.UserCartItems.AddAsync(newItem);
+                    await _db.UserCartItems.AddAsync(newItem, cancellationToken);
                 }
             }
 
-            await _db.SaveChangesAsync();
+            await _db.SaveChangesAsync(cancellationToken);
         }
     }
 }
