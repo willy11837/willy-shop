@@ -1,8 +1,10 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WillyShop.Contracts;
 using WillyShop.Data;
+using WillyShop.Logging;
 using WillyShop.Models;
 using WillyShop.Services;
 
@@ -15,19 +17,32 @@ public sealed class AdminProductsController : ApiControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly NotificationService _notifications;
+    private readonly ProductQueryService _productQuery;
+    private readonly ILogger<AdminProductsController> _logger;
 
-    public AdminProductsController(ApplicationDbContext db, NotificationService notifications)
+    public AdminProductsController(
+        ApplicationDbContext db,
+        NotificationService notifications,
+        ProductQueryService productQuery,
+        ILogger<AdminProductsController> logger)
     {
         _db = db;
         _notifications = notifications;
+        _productQuery = productQuery;
+        _logger = logger;
     }
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<ProductDto>>> GetAll(CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<ProductDto>>> GetAll(
+        [FromQuery] AdminProductQuery query,
+        CancellationToken cancellationToken)
     {
-        var products = await _db.Products.AsNoTracking().OrderBy(product => product.ProductCode)
-            .ToListAsync(cancellationToken);
-        return ApiSuccess(products.Select(Map).ToList());
+        if (query.ModifiedFrom > query.ModifiedTo)
+            return ApiValidationFailure(new Dictionary<string, string[]>
+            {
+                [nameof(query.ModifiedTo)] = ["修改迄日不得早於修改起日。"]
+            });
+        return ApiSuccess(await _productQuery.SearchAdminAsync(query, cancellationToken));
     }
     [HttpPost]
     public async Task<ActionResult<ProductDto>> Create(SaveProductRequest request, CancellationToken cancellationToken)
@@ -39,6 +54,7 @@ public sealed class AdminProductsController : ApiControllerBase
         Apply(product, request);
         _db.Products.Add(product);
         await _db.SaveChangesAsync(cancellationToken);
+        _logger.ProductCreated(product.ProductCode, ActorUserId());
         return ApiSuccess(Map(product), "商品建立成功。", StatusCodes.Status201Created);
     }
     [HttpPut("{productCode}")]
@@ -53,10 +69,14 @@ public sealed class AdminProductsController : ApiControllerBase
         Apply(product, request);
 
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        var notificationCount = 0;
         if (wasOutOfStock && NotificationService.IsPurchasable(product))
-            await _notifications.NotifyBackInStockAsync(product, cancellationToken);
+            notificationCount = await _notifications.NotifyBackInStockAsync(product, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _logger.ProductUpdated(product.ProductCode, ActorUserId());
+        if (notificationCount > 0)
+            _logger.BackInStockNotificationsCreated(notificationCount, product.ProductCode);
         return ApiSuccess(Map(product), "商品更新成功。");
     }
     [HttpDelete("{productCode}")]
@@ -71,6 +91,7 @@ public sealed class AdminProductsController : ApiControllerBase
         _db.Products.Remove(product);
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _logger.ProductDeleted(product.ProductCode, ActorUserId());
         return ApiSuccess<object?>(null, "商品刪除成功。");
     }
 
@@ -91,4 +112,6 @@ public sealed class AdminProductsController : ApiControllerBase
     }
 
     private static ProductDto Map(Product product) => ProductMappings.ToDto(product);
+
+    private string? ActorUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);
 }

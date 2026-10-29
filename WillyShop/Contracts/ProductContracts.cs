@@ -20,7 +20,7 @@ public sealed record ProductDto(
     string? ModifiedBy,
     DateTime? ModifiedAt);
 
-public sealed class ProductQuery
+public class ProductQuery
 {
     [StringLength(450)]
     public string? ProductCode { get; set; }
@@ -45,6 +45,11 @@ public sealed class ProductQuery
 
     [Range(1, 100)]
     public int PageSize { get; set; } = 20;
+}
+
+public sealed class AdminProductQuery : ProductQuery
+{
+    public ProductStatus? Status { get; set; }
 }
 
 public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount);

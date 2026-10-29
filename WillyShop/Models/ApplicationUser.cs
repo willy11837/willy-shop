@@ -14,6 +14,7 @@ namespace WillyShop.Models
         public static readonly string[] All = [System, Admin, Store, Normal, Guest];
         public const string ProductManagers = Store + "," + Admin + "," + System;
         public const string AccountManagers = Admin + "," + System;
+        public const string OrderManagers = Store + "," + Admin + "," + System;
     }
 
     public class ApplicationUser : IdentityUser

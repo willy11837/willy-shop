@@ -1,9 +1,9 @@
 import { http, requireApiData } from './http'
 import type { ApiResponse } from '@/types/api'
-import type { AdminUser, CreateUserRequest, UpdateUserRequest } from '@/types/admin'
+import type { AdminUser, AdminUserQuery, CreateUserRequest, PagedAdminUsers, UpdateUserRequest } from '@/types/admin'
 
-export async function getAdminUsers(): Promise<AdminUser[]> {
-  return requireApiData(await http.get<ApiResponse<AdminUser[]>>('/admin/users'))
+export async function getAdminUsers(query: AdminUserQuery = {}): Promise<PagedAdminUsers> {
+  return requireApiData(await http.get<ApiResponse<PagedAdminUsers>>('/admin/users', { params: query }))
 }
 
 export async function getAssignableRoles(): Promise<string[]> {

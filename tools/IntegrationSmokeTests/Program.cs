@@ -366,6 +366,8 @@ internal class Program
 					{
 						HttpResponseMessage response = await shopper.GetAsync("/api/v1/admin/products");
 						Ensure(response.StatusCode == HttpStatusCode.Forbidden, $"預期 403，實際 {(int)response.StatusCode}");
+						HttpResponseMessage ordersResponse = await shopper.GetAsync("/api/v1/admin/orders");
+						Ensure(ordersResponse.StatusCode == HttpStatusCode.Forbidden, $"後台訂單預期 403，實際 {(int)ordersResponse.StatusCode}");
 					});
 					await RunAsync("會員購物車刪除與重新加入", async () =>
 					{
@@ -403,6 +405,60 @@ internal class Program
 						Ensure((await shopper.GetAsync($"/api/v1/orders/{orderId}")).IsSuccessStatusCode, "本人無法取得訂單");
 						Ensure((await admin.GetAsync($"/api/v1/orders/{orderId}")).IsSuccessStatusCode, "Admin 無法取得訂單");
 					});
+					await RunAsync("後台訂單查詢、出貨、完成、退貨與人工退款", async () =>
+					{
+						int id = orderId ?? throw new InvalidOperationException("訂單 ID 為空");
+						JsonElement adminOrders = await GetEnvelopeDataAsync(admin, $"/api/v1/admin/orders?keyword={id}&status=Pending&page=1&pageSize=10");
+						Ensure(adminOrders.GetProperty("totalCount").GetInt32() == 1, "後台訂單查詢結果錯誤");
+						Ensure(adminOrders.GetProperty("items")[0].GetProperty("account").GetString() == account, "後台訂單會員資料錯誤");
+
+						HttpResponseMessage shipped = await SendWithCsrfAsync(admin, HttpMethod.Post, $"/api/v1/admin/orders/{id}/ship", null);
+						Ensure(shipped.StatusCode == HttpStatusCode.OK, $"出貨 HTTP {(int)shipped.StatusCode}");
+						Ensure((await ReadEnvelopeDataAsync(shipped)).GetProperty("status").GetString() == OrderStatuses.Shipped, "訂單未改為寄送中");
+
+						HttpResponseMessage completed = await SendWithCsrfAsync(shopper, HttpMethod.Post, $"/api/v1/orders/{id}/complete", null);
+						Ensure(completed.StatusCode == HttpStatusCode.OK, $"完成訂單 HTTP {(int)completed.StatusCode}");
+						HttpResponseMessage requested = await SendWithCsrfAsync(shopper, HttpMethod.Post, $"/api/v1/orders/{id}/return-request", new { reason = "整合測試退貨原因" });
+						Ensure(requested.StatusCode == HttpStatusCode.OK, $"申請退貨 HTTP {(int)requested.StatusCode}");
+
+						HttpResponseMessage approved = await SendWithCsrfAsync(admin, HttpMethod.Post, $"/api/v1/admin/orders/{id}/approve-return", new { note = "整合測試核准" });
+						Ensure(approved.StatusCode == HttpStatusCode.OK, $"核准退貨 HTTP {(int)approved.StatusCode}");
+						HttpResponseMessage refunded = await SendWithCsrfAsync(admin, HttpMethod.Post, $"/api/v1/admin/orders/{id}/complete-refund", new { note = "人工退款完成" });
+						Ensure(refunded.StatusCode == HttpStatusCode.OK, $"人工退款 HTTP {(int)refunded.StatusCode}");
+						JsonElement refundedOrder = await ReadEnvelopeDataAsync(refunded);
+						Ensure(refundedOrder.GetProperty("status").GetString() == OrderStatuses.Refunded
+							&& refundedOrder.GetProperty("refundAmount").GetDecimal() == 480m, "退款狀態或金額錯誤");
+
+						HttpResponseMessage duplicateRefund = await SendWithCsrfAsync(admin, HttpMethod.Post, $"/api/v1/admin/orders/{id}/complete-refund", new { note = "重複退款" });
+						Ensure(duplicateRefund.StatusCode == HttpStatusCode.Conflict, $"重複退款預期 409，實際 {(int)duplicateRefund.StatusCode}");
+						await using ApplicationDbContext db = new ApplicationDbContext(dbOptions);
+						Product product = await db.Products.AsNoTracking().SingleAsync(value => value.ProductCode == productCode);
+						Order dbOrder = await db.Orders.AsNoTracking().SingleAsync(value => value.Id == id);
+						Ensure(product.StockQuantity == 12, $"退款後庫存應回補為 12，實際 {product.StockQuantity}");
+						Ensure(dbOrder.InventoryRestockedAt.HasValue && dbOrder.RefundCompletedAt.HasValue, "退款稽核欄位未寫入");
+					});
+					await RunAsync("管理者取消待處理訂單並回補庫存", async () =>
+					{
+						await SendWithCsrfAsync(shopper, HttpMethod.Post, "/api/v1/cart/items/" + productCode, new { quantity = 1 });
+						HttpResponseMessage checkout = await SendWithCsrfAsync(shopper, HttpMethod.Post, "/api/v1/orders/checkout", null);
+						Ensure(checkout.StatusCode == HttpStatusCode.OK, $"建立待取消訂單 HTTP {(int)checkout.StatusCode}");
+						int cancelledOrderId = (await ReadEnvelopeDataAsync(checkout)).GetProperty("id").GetInt32();
+
+						HttpResponseMessage cancelled = await SendWithCsrfAsync(admin, HttpMethod.Post, $"/api/v1/admin/orders/{cancelledOrderId}/cancel", null);
+						Ensure(cancelled.StatusCode == HttpStatusCode.OK, $"管理者取消訂單 HTTP {(int)cancelled.StatusCode}");
+						JsonElement cancelledOrder = await ReadEnvelopeDataAsync(cancelled);
+						Ensure(cancelledOrder.GetProperty("status").GetString() == OrderStatuses.Cancelled
+							&& cancelledOrder.GetProperty("cancelledAt").ValueKind == JsonValueKind.String,
+							"管理者取消後狀態或取消時間錯誤");
+
+						HttpResponseMessage duplicateCancel = await SendWithCsrfAsync(admin, HttpMethod.Post, $"/api/v1/admin/orders/{cancelledOrderId}/cancel", null);
+						Ensure(duplicateCancel.StatusCode == HttpStatusCode.Conflict, $"重複取消預期 409，實際 {(int)duplicateCancel.StatusCode}");
+						await using ApplicationDbContext db = new ApplicationDbContext(dbOptions);
+						Product product = await db.Products.AsNoTracking().SingleAsync(value => value.ProductCode == productCode);
+						Order dbOrder = await db.Orders.AsNoTracking().SingleAsync(value => value.Id == cancelledOrderId);
+						Ensure(product.StockQuantity == 12, $"管理者取消後庫存應回補為 12，實際 {product.StockQuantity}");
+						Ensure(dbOrder.CancelledAt.HasValue && dbOrder.InventoryRestockedAt.HasValue, "取消訂單稽核欄位未寫入");
+					});
 					await RunAsync("Admin 帳號管理新增、修改", async () =>
 					{
 						string managedAccount = "m" + account;
@@ -435,6 +491,10 @@ internal class Program
 							select role.Id).SingleAsync();
 						Ensure(dbUser.DisplayName?.EndsWith("已修改") ?? false, "DB 帳號修改未生效");
 						Ensure(await db.UserRoles.AnyAsync((IdentityUserRole<string> value) => value.UserId == managedId && value.RoleId == normalRoleId), "DB 角色修改未生效");
+						JsonElement users = await GetEnvelopeDataAsync(admin, $"/api/v1/admin/users?keyword={managedAccount}&page=1&pageSize=5");
+						Ensure(users.GetProperty("totalCount").GetInt32() == 1
+							&& users.GetProperty("items")[0].GetProperty("account").GetString() == managedAccount,
+							"後台帳號模糊查詢或分頁錯誤");
 					});
 					await RunAsync("帳號刪除角色限制與 System 刪除", async () =>
 					{

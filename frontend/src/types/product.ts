@@ -34,6 +34,10 @@ export interface ProductQuery {
   pageSize?: number
 }
 
+export interface AdminProductQuery extends ProductQuery {
+  status?: number
+}
+
 export interface PagedProducts {
   items: Product[]
   page: number

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -6,14 +8,44 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using Serilog.Debugging;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
 using WillyShop.Data;
 using WillyShop.Contracts;
 using WillyShop.Filters;
+using WillyShop.Logging;
+using WillyShop.Middleware;
 using WillyShop.Models;
 using WillyShop.Options;
 using WillyShop.Services.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
+
+SelfLog.Enable(message => Console.Error.WriteLine(message));
+builder.Services.AddSerilog((services, loggerConfiguration) =>
+{
+    loggerConfiguration
+        .ReadFrom.Configuration(builder.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("Application", "WillyShop");
+
+    if (builder.Environment.IsDevelopment())
+    {
+        loggerConfiguration.WriteTo.Console(
+            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
+    }
+    else
+    {
+        loggerConfiguration.WriteTo.Async(
+            sinkConfiguration => sinkConfiguration.Console(new RenderedCompactJsonFormatter()),
+            bufferSize: 10_000,
+            blockWhenFull: false,
+            monitor: new AsyncLogSinkMonitor());
+    }
+});
 
 builder.Services.AddControllers(options => options.Filters.Add<ApiAntiforgeryFilter>());
 builder.Services.Configure<ApiBehaviorOptions>(options =>
@@ -141,14 +173,54 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+app.UseWhen(context => context.Request.Path.StartsWithSegments("/api"), apiApp =>
+{
+    apiApp.UseSerilogRequestLogging(options =>
+    {
+        options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+        options.GetLevel = (httpContext, elapsed, exception) => exception is not null
+            || httpContext.Response.StatusCode >= StatusCodes.Status500InternalServerError
+                ? LogEventLevel.Error
+                : elapsed >= 2_000
+                    ? LogEventLevel.Warning
+                    : LogEventLevel.Information;
+        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+        {
+            diagnosticContext.Set(
+                "TraceId",
+                Activity.Current?.TraceId.ToString() ?? httpContext.TraceIdentifier);
+            if (Activity.Current is { } activity)
+                diagnosticContext.Set("SpanId", activity.SpanId.ToString());
+
+            var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? httpContext.User.FindFirstValue("sub");
+            if (!string.IsNullOrWhiteSpace(userId))
+                diagnosticContext.Set("UserId", userId);
+
+            var endpointName = httpContext.GetEndpoint()?.DisplayName;
+            if (!string.IsNullOrWhiteSpace(endpointName))
+                diagnosticContext.Set("EndpointName", endpointName);
+        };
+    });
+});
+
 // Configure the HTTP request pipeline.
 app.UseExceptionHandler(exceptionHandlerApp =>
 {
     exceptionHandlerApp.Run(async context =>
     {
         var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        var activity = Activity.Current;
+        var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? context.User.FindFirstValue("sub");
         context.RequestServices.GetRequiredService<ILogger<Program>>()
-            .LogError(exception, "Unhandled exception while processing {Method} {Path}", context.Request.Method, context.Request.Path);
+            .UnhandledRequestException(
+                exception ?? new InvalidOperationException("The exception handler did not receive an exception."),
+                context.Request.Method,
+                context.Request.Path,
+                userId,
+                activity?.TraceId.ToString() ?? context.TraceIdentifier,
+                activity?.SpanId.ToString());
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         await context.Response.WriteAsJsonAsync(new ApiResponse<object?>(
             false,
@@ -201,6 +273,7 @@ app.UseCors();
 // 中文註解：啟用 Session 與 Authentication/Authorization 中介軟體。
 app.UseSession();
 app.UseAuthentication();
+app.UseMiddleware<RequestLoggingScopeMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
@@ -348,7 +421,7 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred seeding the DB.");
+        logger.DatabaseInitializationFailed(ex);
     }
 }
 

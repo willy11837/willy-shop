@@ -1,6 +1,6 @@
 import { http, requireApiData } from './http'
 import type { ApiResponse } from '@/types/api'
-import type { PagedProducts, Product, ProductQuery, SaveProductRequest } from '@/types/product'
+import type { AdminProductQuery, PagedProducts, Product, ProductQuery, SaveProductRequest } from '@/types/product'
 
 export async function getProducts(query: ProductQuery = {}): Promise<PagedProducts> {
   return requireApiData(await http.get<ApiResponse<PagedProducts>>('/products', { params: query }))
@@ -14,8 +14,8 @@ export async function getOnSaleProducts(): Promise<Product[]> {
   return requireApiData(await http.get<ApiResponse<Product[]>>('/products/on-sale'))
 }
 
-export async function getAdminProducts(): Promise<Product[]> {
-  return requireApiData(await http.get<ApiResponse<Product[]>>('/admin/products'))
+export async function getAdminProducts(query: AdminProductQuery = {}): Promise<PagedProducts> {
+  return requireApiData(await http.get<ApiResponse<PagedProducts>>('/admin/products', { params: query }))
 }
 
 export async function createProduct(request: SaveProductRequest): Promise<Product> {

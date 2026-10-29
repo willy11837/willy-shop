@@ -4,6 +4,34 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace WillyShop.Models
 {
+    public static class OrderStatuses
+    {
+        public const string Pending = "Pending";
+        public const string Shipped = "Shipped";
+        public const string Completed = "Completed";
+        public const string Cancelled = "Cancelled";
+        public const string ReturnRequested = "ReturnRequested";
+        public const string ReturnApproved = "ReturnApproved";
+        public const string Refunded = "Refunded";
+
+        public static readonly string[] All =
+        [
+            Pending, Shipped, Completed, Cancelled, ReturnRequested, ReturnApproved, Refunded
+        ];
+
+        public static string DisplayName(string status) => status switch
+        {
+            Pending => "待處理",
+            Shipped => "寄送中",
+            Completed => "已完成",
+            Cancelled => "已取消",
+            ReturnRequested => "退貨申請中",
+            ReturnApproved => "退貨已核准",
+            Refunded => "已退款",
+            _ => status
+        };
+    }
+
     /// <summary>
     /// 訂單實體（Order）：代表使用者已建立的訂單。
     /// </summary>
@@ -21,6 +49,37 @@ namespace WillyShop.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        public string? Status { get; set; } = "Pending"; // 訂單狀態（例如 Pending, Paid, Shipped）
+        [Required, StringLength(30)]
+        public string Status { get; set; } = OrderStatuses.Pending;
+
+        public DateTime? ModifiedAt { get; set; }
+        public DateTime? ShippedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public DateTime? CancelledAt { get; set; }
+        public DateTime? ReturnRequestedAt { get; set; }
+
+        [StringLength(500)]
+        public string? ReturnReason { get; set; }
+
+        public DateTime? ReturnReviewedAt { get; set; }
+
+        [StringLength(450)]
+        public string? ReturnReviewedBy { get; set; }
+
+        [StringLength(500)]
+        public string? ReturnReviewNote { get; set; }
+
+        public DateTime? RefundCompletedAt { get; set; }
+
+        [StringLength(450)]
+        public string? RefundProcessedBy { get; set; }
+
+        [StringLength(500)]
+        public string? RefundNote { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? RefundAmount { get; set; }
+
+        public DateTime? InventoryRestockedAt { get; set; }
     }
 }

@@ -26,6 +26,7 @@ const router = createRouter({
     { path: '/notifications', name: 'notifications', component: () => import('@/views/account/NotificationsView.vue'), meta: { title: '通知中心', requiresAuth: true } },
     { path: '/admin', name: 'admin', component: () => import('@/views/admin/AdminHomeView.vue'), meta: { title: '管理後台', requiresAuth: true, roles: ['System', 'Admin', 'Store'] } },
     { path: '/admin/products', name: 'admin-products', component: () => import('@/views/admin/AdminProductsView.vue'), meta: { title: '商品管理', requiresAuth: true, roles: ['System', 'Admin', 'Store'] } },
+    { path: '/admin/orders', name: 'admin-orders', component: () => import('@/views/admin/AdminOrdersView.vue'), meta: { title: '訂單管理', requiresAuth: true, roles: ['System', 'Admin', 'Store'] } },
     { path: '/admin/users', name: 'admin-users', component: () => import('@/views/admin/AdminUsersView.vue'), meta: { title: '帳號管理', requiresAuth: true, roles: ['System', 'Admin'] } },
     { path: '/forbidden', name: 'forbidden', component: () => import('@/views/ForbiddenView.vue'), meta: { title: '沒有權限' } },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue'), meta: { title: '找不到頁面' } },

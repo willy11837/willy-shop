@@ -23,3 +23,16 @@ export interface UpdateUserRequest {
   newPassword?: string
   role: string
 }
+
+export interface AdminUserQuery {
+  keyword?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface PagedAdminUsers {
+  items: AdminUser[]
+  page: number
+  pageSize: number
+  totalCount: number
+}

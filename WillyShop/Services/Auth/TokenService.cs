@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using WillyShop.Contracts;
 using WillyShop.Data;
+using WillyShop.Logging;
 using WillyShop.Models;
 using WillyShop.Options;
 
@@ -22,17 +23,20 @@ public sealed class TokenService : ITokenService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly JwtOptions _options;
     private readonly IWebHostEnvironment _environment;
+    private readonly ILogger<TokenService> _logger;
 
     public TokenService(
         ApplicationDbContext db,
         UserManager<ApplicationUser> userManager,
         IOptions<JwtOptions> options,
-        IWebHostEnvironment environment)
+        IWebHostEnvironment environment,
+        ILogger<TokenService> logger)
     {
         _db = db;
         _userManager = userManager;
         _options = options.Value;
         _environment = environment;
+        _logger = logger;
     }
 
     public async Task<AuthResponse> IssueAsync(
@@ -78,6 +82,7 @@ public sealed class TokenService : ITokenService
         {
             await RevokeFamilyAsync(existing.TokenFamily, ipAddress, "偵測到 Refresh Token 重複使用。", cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            _logger.RefreshTokenReuseDetected(existing.UserId);
             return null;
         }
 

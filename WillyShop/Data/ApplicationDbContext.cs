@@ -89,6 +89,25 @@ namespace WillyShop.Data
                     .HasForeignKey(value => value.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
+
+            builder.Entity<Order>(entity =>
+            {
+                entity.HasIndex(value => new { value.UserId, value.CreatedAt });
+                entity.HasIndex(value => new { value.Status, value.CreatedAt });
+                entity.HasOne<ApplicationUser>()
+                    .WithMany()
+                    .HasForeignKey(value => value.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            builder.Entity<OrderItem>(entity =>
+            {
+                entity.HasIndex(value => value.OrderId);
+                entity.HasOne<Order>()
+                    .WithMany()
+                    .HasForeignKey(value => value.OrderId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
         }
     }
 }

@@ -135,12 +135,12 @@ public sealed class NotificationService
                 cancellationToken);
     }
 
-    public async Task NotifyBackInStockAsync(Product product, CancellationToken cancellationToken)
+    public async Task<int> NotifyBackInStockAsync(Product product, CancellationToken cancellationToken)
     {
         var subscriptions = await _db.BackInStockSubscriptions
             .Where(value => value.ProductCode == product.ProductCode && value.NotifiedAt == null)
             .ToListAsync(cancellationToken);
-        if (subscriptions.Count == 0) return;
+        if (subscriptions.Count == 0) return 0;
 
         var now = DateTime.UtcNow;
         foreach (var subscription in subscriptions)
@@ -157,6 +157,7 @@ public sealed class NotificationService
             });
             subscription.NotifiedAt = now;
         }
+        return subscriptions.Count;
     }
 
     public static bool IsPurchasable(Product product)

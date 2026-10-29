@@ -72,27 +72,39 @@ namespace WillyShop.Services
         {
             if (anonItems == null || anonItems.Count == 0) return;
 
-            foreach (var anon in anonItems)
+            var mergedAnonymousItems = anonItems
+                .GroupBy(item => item.ProductCode)
+                .Select(group => new
+                {
+                    ProductCode = group.Key,
+                    Quantity = group.Sum(item => item.Quantity)
+                })
+                .ToList();
+            var productCodes = mergedAnonymousItems
+                .Select(item => item.ProductCode)
+                .ToList();
+            var existingItems = await _db.UserCartItems
+                .Where(item => item.UserId == userId && productCodes.Contains(item.ProductCode))
+                .ToDictionaryAsync(item => item.ProductCode, cancellationToken);
+            var newItems = new List<UserCartItem>();
+
+            foreach (var anonymousItem in mergedAnonymousItems)
             {
-                var existing = await _db.UserCartItems
-                    .FirstOrDefaultAsync(x => x.UserId == userId && x.ProductCode == anon.ProductCode, cancellationToken);
-                if (existing != null)
+                if (existingItems.TryGetValue(anonymousItem.ProductCode, out var existingItem))
                 {
-                    existing.Quantity += anon.Quantity;
-                    _db.UserCartItems.Update(existing);
+                    existingItem.Quantity += anonymousItem.Quantity;
+                    continue;
                 }
-                else
+
+                newItems.Add(new UserCartItem
                 {
-                    var newItem = new UserCartItem
-                    {
-                        UserId = userId,
-                        ProductCode = anon.ProductCode,
-                        Quantity = anon.Quantity
-                    };
-                    await _db.UserCartItems.AddAsync(newItem, cancellationToken);
-                }
+                    UserId = userId,
+                    ProductCode = anonymousItem.ProductCode,
+                    Quantity = anonymousItem.Quantity
+                });
             }
 
+            _db.UserCartItems.AddRange(newItems);
             await _db.SaveChangesAsync(cancellationToken);
         }
     }

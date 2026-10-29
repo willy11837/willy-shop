@@ -16,6 +16,23 @@ public sealed class ProductQueryService
         var query = _db.Products.AsNoTracking()
             .Where(product => product.Status == ProductStatus.可銷售 || product.StockQuantity <= 0);
 
+        return await SearchCoreAsync(query, request, cancellationToken);
+    }
+
+    public Task<PagedResult<ProductDto>> SearchAdminAsync(AdminProductQuery request, CancellationToken cancellationToken)
+    {
+        IQueryable<Product> query = _db.Products.AsNoTracking();
+        if (request.Status.HasValue)
+            query = query.Where(product => product.Status == request.Status.Value);
+        return SearchCoreAsync(query, request, cancellationToken);
+    }
+
+    private static async Task<PagedResult<ProductDto>> SearchCoreAsync(
+        IQueryable<Product> query,
+        ProductQuery request,
+        CancellationToken cancellationToken)
+    {
+
         if (!string.IsNullOrWhiteSpace(request.ProductCode))
         {
             var value = request.ProductCode.Trim();
