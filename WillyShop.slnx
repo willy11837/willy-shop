@@ -1,3 +1,5 @@
 <Solution>
   <Project Path="WillyShop/WillyShop.csproj" />
+  <Project Path="tests/WillyShop.UnitTests/WillyShop.UnitTests.csproj" />
+  <Project Path="tests/WillyShop.IntegrationTests/WillyShop.IntegrationTests.csproj" />
 </Solution>
